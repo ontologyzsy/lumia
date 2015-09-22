@@ -1,6 +1,6 @@
 {
-  initial:"kMinionjoining",
-  events:[
+  "initial":"kMinionjoining",
+  "events":[
         {"name":"agent join in galaxy","from":"kMinonJoining","to":"kMinonDeadChecking"},
         {"name":"dead check ok", "from":"kMinonDeadChecking", "to":"kMinonAlive"},
         {"name":"dead check failed", "from":"kMinonDeadChecking", "to":"kMinonRestarting"},
