@@ -1,0 +1,37 @@
+package baidu.lumia;
+
+option cc_generic_services = true;
+
+enum LumiaStatus {
+    kLumiaOk = 0;
+}
+
+enum MinionState {
+    kMinionAlive = 0;
+    kMinionRestarting = 1;
+    kMinionReinstalling = 2;
+    kMinionIniting = 3;
+    kMinionDeadChecking = 4;
+    kMinionJoining = 5;
+    kMinionError = 6;
+}
+
+message Minion {
+    optional string id = 1;
+    optional string ip = 2;
+    optional string hostname = 3;
+    optional MinionState state = 4;
+}
+
+message ReportDeadMinionRequest {
+    optional string ip = 1;
+    optional string reason = 2;
+}
+
+message ReportDeadMinionResponse {
+    optional LumiaStatus status = 1; 
+}
+
+service LumiaCtrl {
+    rpc ReportDeadMinion(ReportDeadMinionRequest) returns (ReportDeadMinionResponse);
+}

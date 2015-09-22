@@ -1,14 +1,18 @@
 {
-  "initial":"kMinionjoining",
+  "system_vars":["minon"],
+  "initial":"kMinionJoining",
   "events":[
-        {"name":"agent join in galaxy","from":"kMinonJoining","to":"kMinonDeadChecking"},
-        {"name":"dead check ok", "from":"kMinonDeadChecking", "to":"kMinonAlive"},
-        {"name":"dead check failed", "from":"kMinonDeadChecking", "to":"kMinonRestarting"},
-        {"name":"restart successfully", "from":"kMinonRestarting", "to":"kMinonAlive"},
-        {"name":"restart failed", "from":"kMinonRestarting", "to":"kMinonError"},
-        {"name":"start init enviroment", "from":"kMinonAlive", "to":"kMinonIniting"},
-        {"name":"init enviroment successfully", "from":"kMinonIniting", "to":"kMinonAlive"},
-        {"name":"init enviroment fails", "from":"kMinonIniting", "to":"kMinonError"},
-        {"name":"dead minon report", "from":"kMinonAlive", "to":"kMinonDeadChecking"}
-      ]
-}
+        {"name":"join","from":"kMinionJoining","to":"kMinionDeadChecking"},
+        {"name":"dead_check_ok", "from":"kMinionDeadChecking", "to":"kMinionAlive"},
+        {"name":"dead_check_fails", "from":"kMinionDeadChecking", "to":"kMinionRestarting"},
+        {"name":"restart_ok", "from":"kMinionRestarting", "to":"kMinionAlive"},
+        {"name":"restart_fails", "from":"kMinionRestarting", "to":"kMinionError"},
+        {"name":"start_init", "from":"kMinionAlive", "to":"kMinionIniting"},
+        {"name":"init_ok", "from":"kMinionIniting", "to":"kMinionAlive"},
+        {"name":"init_fails", "from":"kMinionIniting", "to":"kMinionError"},
+        {"name":"dead_minon_report", "from":"kMinionAlive", "to":"kMinionDeadChecking"}
+      ],
+   "callbacks":[
+        {"name":"restart_ok", "after":["start_init"]}
+   ]
+ }
