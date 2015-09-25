@@ -4,7 +4,6 @@
 #ifndef BAIDU_LUMIA_ENGINE_LUMIA_IMPL_H
 #define BAIDU_LUMIA_ENGINE_LUMIA_IMPL_H
 #include "proto/lumia.pb.h"
-#include "fsm/fsm.h"
 #include "mutex.h"
 #include "thread_pool.h"
 

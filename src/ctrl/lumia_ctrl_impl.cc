@@ -8,7 +8,6 @@
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
 #include "logging.h"
-#include "fsm/fsm.h"
 
 DECLARE_string(fsm_conf_path);
 
@@ -16,12 +15,9 @@ namespace baidu {
 namespace lumia {
 
 LumiaCtrlImpl::LumiaCtrlImpl():checker_(4){
-    fsm_ = new FSM(FLAGS_fsm_conf_path);
-    fsm_->Init();
 }
 
 LumiaCtrlImpl::~LumiaCtrlImpl(){
-    delete fsm_;
 }
 
 void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controller,

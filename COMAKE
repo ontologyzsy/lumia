@@ -47,15 +47,7 @@ lumia_ctrl_src='src/ctrl/lumia_ctrl_main.cc\
                 src/ctrl/lumia_ctrl_impl.cc\
                 src/proto/lumia.proto\
                 src/flags.cc\
-                src/fsm/fsm.cc'
-machine_test='src/ctrl/machine_test.cc\
-            src/ctrl/http_client.cc\
-            src/ctrl/machine.cc\
-            src/flags.cc'
-http_test='src/ctrl/http_client_test.cc\
-            src/ctrl/http_client.cc'
-sample = "sample_curl.cc"
-Application('sample',Sources(sample))
-Application('machine',Sources(machine_test))
-Application('http',Sources(http_test))
+                src/ctrl/minion_ctrl.cc\
+                src/ctrl/http_client.cc'
+Application('lumia',Sources(lumia_ctrl_src))
 
