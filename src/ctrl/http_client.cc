@@ -50,6 +50,7 @@ bool HttpClient::Post(const HttpPostRequest* request,
          chunk = curl_slist_append(chunk, it->c_str());
     }
     do {
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         if (chunk != NULL) {
             int status  = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
             if (status != CURLE_OK) {
@@ -109,6 +110,7 @@ bool HttpClient::Get(const HttpGetRequest* request,
          chunk = curl_slist_append(chunk, it->c_str());
     }
     do {
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
         if (chunk != NULL) {
             int status  = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
             if (status != CURLE_OK) {

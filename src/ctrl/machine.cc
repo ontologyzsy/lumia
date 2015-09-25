@@ -210,7 +210,7 @@ bool MachineCtrl::Reboot(const std::vector<std::string>& hosts,
     }
     LOG(INFO, "get access_token %s", access_token.c_str());
     HttpGetRequest request;
-    request.headers.push_back("Authorization: RopAuth " + access_token);
+    request.headers.push_back("ROP-Authorization: RopAuth " + access_token);
     std::string query_str;
     ok = BuildRebootJob(hosts, &query_str);
     if (!ok) {

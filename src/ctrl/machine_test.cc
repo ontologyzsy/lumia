@@ -18,7 +18,7 @@ int main(int argc, char* argv[]) {
     ::baidu::lumia::MachineCtrl machine("jc.noah.baidu.com",
              "http://api.rms.baidu.com");
     std::vector<std::string> hosts;
-    hosts.push_back("514714");
+    hosts.push_back("514906");
     bool ok = machine.Reboot(hosts, boost::bind(call_back, _1, _2, _3));
     if (ok) {
         std::cout << "submit job success" << std::endl;
