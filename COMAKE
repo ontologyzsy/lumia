@@ -54,7 +54,8 @@ machine_test='src/ctrl/machine_test.cc\
             src/flags.cc'
 http_test='src/ctrl/http_client_test.cc\
             src/ctrl/http_client.cc'
-
+sample = "sample_curl.cc"
+Application('sample',Sources(sample))
 Application('machine',Sources(machine_test))
 Application('http',Sources(http_test))
 

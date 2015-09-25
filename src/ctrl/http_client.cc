@@ -44,7 +44,21 @@ bool HttpClient::Post(const HttpPostRequest* request,
         return false;
     }
     bool ok = false;
+    struct curl_slist *chunk = NULL; 
+    std::vector<std::string>::const_iterator it = request->headers.begin();
+    for (; it != request->headers.end(); ++it) {
+         chunk = curl_slist_append(chunk, it->c_str());
+    }
     do {
+        if (chunk != NULL) {
+            int status  = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+            if (status != CURLE_OK) {
+                LOG(WARNING, "fail add header url %s to curl", request->url.c_str());
+                break;
+            
+            }
+        }
+        LOG(INFO, "url %s", request->url.c_str());
         int status = curl_easy_setopt(curl, CURLOPT_URL, request->url.c_str());
         if (status != CURLE_OK) {
             LOG(WARNING, "fail add url %s to curl", request->url.c_str());
@@ -52,7 +66,8 @@ bool HttpClient::Post(const HttpPostRequest* request,
         }
         std::stringstream ss;
         BuildPostForm(request, ss, curl);
-        status = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, ss.str().c_str());
+        std::string data = ss.str();
+        status = curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data.c_str());
         if (status != CURLE_OK) {
             LOG(WARNING, "fail set post field %s", ss.str().c_str());
             break;
@@ -67,7 +82,7 @@ bool HttpClient::Post(const HttpPostRequest* request,
             LOG(WARNING, "fail set write data ");
             break;
         }
-        status =curl_easy_perform(curl);
+        status = curl_easy_perform(curl);
         if (status != CURLE_OK) {
             LOG(WARNING, "fail to post data to %s", request->url.c_str());
             break;
@@ -76,6 +91,7 @@ bool HttpClient::Post(const HttpPostRequest* request,
         ok = true;
     } while (0);
     curl_easy_cleanup(curl);
+    curl_slist_free_all(chunk);
     return ok;
 }
 
@@ -87,7 +103,19 @@ bool HttpClient::Get(const HttpGetRequest* request,
         return false;
     }
     bool ok = false;
+    struct curl_slist *chunk = NULL; 
+    std::vector<std::string>::const_iterator it = request->headers.begin();
+    for (; it != request->headers.end(); ++it) {
+         chunk = curl_slist_append(chunk, it->c_str());
+    }
     do {
+        if (chunk != NULL) {
+            int status  = curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+            if (status != CURLE_OK) {
+                LOG(WARNING, "fail add header url %s to curl", request->url.c_str());
+                break; 
+            }
+        }
         int status = curl_easy_setopt(curl, CURLOPT_URL, request->url.c_str());
         if (status != CURLE_OK) {
             LOG(WARNING, "fail add url %s to curl", request->url.c_str());
@@ -112,6 +140,7 @@ bool HttpClient::Get(const HttpGetRequest* request,
         ok = true;
     } while (0);
     curl_easy_cleanup(curl);
+    curl_slist_free_all(chunk);
     return ok;
 }
 

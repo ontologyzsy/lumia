@@ -18,6 +18,7 @@ namespace lumia {
 struct HttpPostRequest {
     std::vector<std::pair<std::string, std::string> > data;
     std::string url;
+    std::vector<std::string> headers;
 };
 
 struct HttpResponse {
@@ -27,6 +28,7 @@ struct HttpResponse {
 
 struct HttpGetRequest {
     std::string url;
+    std::vector<std::string> headers;
 };
 
 class HttpClient {

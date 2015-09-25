@@ -202,7 +202,41 @@ bool MachineCtrl::BuildJob(const std::string& script,
 bool MachineCtrl::Reboot(const std::vector<std::string>& hosts,
                          const CallBack& callback) {
     MutexLock lock(&mutex_);
-
+    std::string access_token;
+    bool ok = GetRmsAccessToken(&access_token);
+    if (!ok) {
+        LOG(WARNING, "fail to get rms access token");
+        return false;
+    }
+    LOG(INFO, "get access_token %s", access_token.c_str());
+    HttpGetRequest request;
+    request.headers.push_back("Authorization: RopAuth " + access_token);
+    std::string query_str;
+    ok = BuildRebootJob(hosts, &query_str);
+    if (!ok) {
+        LOG(WARNING, "fail build job form");
+        return false;
+    }
+    LOG(INFO, "reboot query_str  %s", query_str.c_str());
+    request.url = rms_http_server_ + "/v1/unified_list/selfReboot?" + query_str;
+    HttpResponse response;
+    ok = http_client_.Get(&request, &response);
+    if (!ok) {
+        LOG(WARNING, "fail to reboot for query_str %s", query_str.c_str());
+        return false;
+    }
+    rapidjson::Document doc;
+    doc.Parse(response.body.c_str());
+    LOG(INFO, "reboot response %s", response.body.c_str());
+    if (!doc.IsObject()) {
+        LOG(WARNING, "fail to parse response %s", response.body.c_str());
+        return false;
+    }
+    if (doc.HasMember("status") && doc["status"].GetInt() ==0) {
+        LOG(INFO, "reboot %s successfully with id %s ", query_str.c_str(), doc["data"]["list_id"].GetString());
+        return true;
+    }
+    return false;
 }
 
 bool MachineCtrl::BuildRebootJob(const std::vector<std::string>& hosts,
@@ -214,6 +248,13 @@ bool MachineCtrl::BuildRebootJob(const std::vector<std::string>& hosts,
         }
         machines.append(hosts[i]);
     }
+    query_str->append("machines=");
+    query_str->append(machines); 
+    query_str->append("&skip_audit=1");
+    return true;
+}
+
+bool MachineCtrl::GetRmsAccessToken(std::string* access_token) {
     HttpPostRequest request;
     request.url = rms_http_server_ + "/auth/accessToken";
     request.data.push_back(std::make_pair("app_key", FLAGS_rms_app_key));
@@ -226,7 +267,18 @@ bool MachineCtrl::BuildRebootJob(const std::vector<std::string>& hosts,
         LOG(WARNING, "fail to get rms access token");
         return false;
     }
-
+    rapidjson::Document doc;
+    doc.Parse(response.body.c_str());
+    if (!doc.IsObject()) {
+        LOG(WARNING, "fail to parse response %s", response.body.c_str());
+        return false;
+    }
+    if (!doc.HasMember("access_token")) {
+        LOG(WARNING, "fail get access token for response %s", response.body.c_str());
+        return false;
+    }
+    *access_token = doc["access_token"].GetString();
+    return true;
 }
 
 } // lumia

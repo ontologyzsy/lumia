@@ -16,14 +16,10 @@ int main(int argc, char* argv[]) {
 
     ::google::ParseCommandLineFlags(&argc, &argv, true);
     ::baidu::lumia::MachineCtrl machine("jc.noah.baidu.com",
-             "api.rms.baidu.com");
-    std::string script="#!/usr/bin/env bash\n"
-                                 "touch lumia\n";
+             "http://api.rms.baidu.com");
     std::vector<std::string> hosts;
-    hosts.push_back("yq01-tera1.yq01");
-    std::string session;
-    bool ok = machine.Exec(script, hosts, "root", 0, &session, 
-      boost::bind(call_back, _1, _2, _3));
+    hosts.push_back("514714");
+    bool ok = machine.Reboot(hosts, boost::bind(call_back, _1, _2, _3));
     if (ok) {
         std::cout << "submit job success" << std::endl;
     }

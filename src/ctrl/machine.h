@@ -46,7 +46,11 @@ private:
 
     void CheckExecJob(const std::string& sessionid);
 
-    bool BuildRebootJob(const std::vector<std::string>& hosts);
+    bool BuildRebootJob(const std::vector<std::string>& hosts,
+                        std::string* query_str);
+
+    bool GetRmsAccessToken(std::string* access_token);
+
 private:
     std::string ccs_http_server_;
     std::string rms_http_server_;
