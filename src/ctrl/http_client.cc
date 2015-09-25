@@ -79,6 +79,41 @@ bool HttpClient::Post(const HttpPostRequest* request,
     return ok;
 }
 
+bool HttpClient::Get(const HttpGetRequest* request,
+                     HttpResponse* response) {
+
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        return false;
+    }
+    bool ok = false;
+    do {
+        int status = curl_easy_setopt(curl, CURLOPT_URL, request->url.c_str());
+        if (status != CURLE_OK) {
+            LOG(WARNING, "fail add url %s to curl", request->url.c_str());
+            break;
+        }
+        status = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writer);
+        if (status != CURLE_OK) {
+            break;
+        }
+        std::string content;
+        status = curl_easy_setopt(curl, CURLOPT_WRITEDATA, &content);
+        if (status != CURLE_OK) {
+            LOG(WARNING, "fail set write data ");
+            break;
+        }
+        status =curl_easy_perform(curl);
+        if (status != CURLE_OK) {
+            LOG(WARNING, "fail to get data to %s", request->url.c_str());
+            break;
+        }
+        response->body = content;
+        ok = true;
+    } while (0);
+    curl_easy_cleanup(curl);
+    return ok;
+}
 
 void HttpClient::BuildPostForm(const HttpPostRequest* request,
                                std::stringstream& ss,

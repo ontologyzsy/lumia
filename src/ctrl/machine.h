@@ -7,9 +7,20 @@
 #include <boost/function.hpp>
 #include "ctrl/http_client.h"
 #include "thread_pool.h"
+#include "mutex.h"
 
 namespace baidu {
 namespace lumia {
+typedef boost::function<void (const std::string& sessionid, const std::vector<std::string>& success, const std::vector<std::string>& fails)> CallBack;
+struct ExecContext {
+    std::string sessionid;
+    std::string script;
+    std::vector<std::string> hosts;
+    std::string account;
+    int32_t concurrency;
+    CallBack callback;
+    std::string jobid;
+};
 
 class MachineCtrl {
 public:
@@ -18,8 +29,11 @@ public:
     bool Exec(const std::string& script,
               const std::vector<std::string>& hosts,
               const std::string& account,
-              int32_t concurrency);
-
+              int32_t concurrency,
+              std::string* sessionid,
+              const CallBack& callback);
+    bool Reboot(const std::vector<std::string>& hosts,
+                const CallBack& callback);
     ~MachineCtrl();
 private:
     bool BuildJob(const std::string& script,
@@ -30,11 +44,16 @@ private:
                   std::string* job);
     bool GenerateTicket(std::string* ticket, std::string* service);
 
+    void CheckExecJob(const std::string& sessionid);
+
+    bool BuildRebootJob(const std::vector<std::string>& hosts);
 private:
     std::string ccs_http_server_;
     std::string rms_http_server_;
     HttpClient http_client_;
     ::baidu::common::ThreadPool checker_;
+    std::map<std::string, ExecContext> exec_sessions_;
+    Mutex mutex_;
 };
 
 }

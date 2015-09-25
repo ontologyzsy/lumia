@@ -3,7 +3,11 @@
 // found in the LICENSE file.
 #include "ctrl/lumia_ctrl_impl.h"
 
+#include <unistd.h>
 #include <gflags/gflags.h>
+#include <boost/function.hpp>
+#include <boost/bind.hpp>
+#include "logging.h"
 #include "fsm/fsm.h"
 
 DECLARE_string(fsm_conf_path);
@@ -11,18 +15,26 @@ DECLARE_string(fsm_conf_path);
 namespace baidu {
 namespace lumia {
 
-LumiaCtrlImpl::LumiaCtrlImpl(){
+LumiaCtrlImpl::LumiaCtrlImpl():checker_(4){
     fsm_ = new FSM(FLAGS_fsm_conf_path);
     fsm_->Init();
 }
+
 LumiaCtrlImpl::~LumiaCtrlImpl(){
     delete fsm_;
 }
+
 void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controller,
                           const ::baidu::lumia::ReportDeadMinionRequest* request,
                           ::baidu::lumia::ReportDeadMinionResponse* response,
                           ::google::protobuf::Closure* done) {}
 
+
+bool LumiaCtrlImpl::StartInitMinion(Minion* minion) {
+    if (minion == NULL) {
+        return false;
+    }
+}
 
 }
 }

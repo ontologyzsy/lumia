@@ -25,6 +25,10 @@ struct HttpResponse {
     std::string error;
 };
 
+struct HttpGetRequest {
+    std::string url;
+};
+
 class HttpClient {
 
 public:
@@ -32,6 +36,8 @@ public:
     ~HttpClient(){}
     bool Post(const HttpPostRequest* request,
               HttpResponse* response);
+    bool Get(const HttpGetRequest* request,
+            HttpResponse* response);
 private:
     void BuildPostForm(const HttpPostRequest* request,
                        std::stringstream& ss,

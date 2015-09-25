@@ -31,20 +31,30 @@ INCPATHS('. ./src ./output/include ./common/include ./ins/sdk/')
 LIBS('./common/libcommon.a ./ins/libins_sdk.a')
 
 #链接参数.
-LDFLAGS('-lpthread -lz')
+LDFLAGS('-lpthread -lz -ldl -lcrypto -lrt -lidn -lssl -lldap')
 
 #依赖模块
 CONFIGS('public/sofa-pbrpc@trunk@comake')
 CONFIGS('thirdsrc/protobuf@2.6.2.0')
 CONFIGS('third-64/boost@1.63.0.101')
+CONFIGS('third-64/libcurl@base')
 CONFIGS('third-64/gflags@gflags_2-0-0-100_PD_BL')
 CONFIGS('bdg/log/build-64/libs/thirdparty/rapidjson@1.0.0.0')
 CONFIGS('third-64/leveldb@base')
+CONFIGS('public/noah/giano-lib/release/baas-lib-c@ci-base')
+
 lumia_ctrl_src='src/ctrl/lumia_ctrl_main.cc\
                 src/ctrl/lumia_ctrl_impl.cc\
                 src/proto/lumia.proto\
                 src/flags.cc\
                 src/fsm/fsm.cc'
+machine_test='src/ctrl/machine_test.cc\
+            src/ctrl/http_client.cc\
+            src/ctrl/machine.cc\
+            src/flags.cc'
+http_test='src/ctrl/http_client_test.cc\
+            src/ctrl/http_client.cc'
 
-Application('lumia_ctrl',Sources(lumia_ctrl_src))
+Application('machine',Sources(machine_test))
+Application('http',Sources(http_test))
 

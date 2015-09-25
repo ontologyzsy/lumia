@@ -6,6 +6,7 @@
 #include "proto/lumia.pb.h"
 #include "fsm/fsm.h"
 #include "mutex.h"
+#include "thread_pool.h"
 
 namespace baidu {
 namespace lumia {
@@ -15,16 +16,21 @@ class LumiaCtrlImpl : public LumiaCtrl {
 public:
     LumiaCtrlImpl();
     ~LumiaCtrlImpl();
+
+    // galaxy log checker report dead agent
     void ReportDeadMinion(::google::protobuf::RpcController* controller,
                           const ::baidu::lumia::ReportDeadMinionRequest* request,
                           ::baidu::lumia::ReportDeadMinionResponse* response,
                           ::google::protobuf::Closure* done);
 
+
+private:
+    bool StartInitMinion(Minion* minion);
 private:
     // ip -> minion pairs
     std::map<std::string, Minion> minions_;
     ::baidu::common::Mutex mutex_;
-    FSM* fsm_;
+    ::baidu::common::ThreadPool checker_;
 };
 
 }

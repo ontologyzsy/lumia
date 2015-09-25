@@ -2,7 +2,7 @@
   "system_vars":["minon"],
   "initial":"kMinionJoining",
   "events":[
-        {"name":"join","from":"kMinionJoining","to":"kMinionDeadChecking"},
+        {"name":"start_dead_check","from":["kMinionJoining"],"to":"kMinionDeadChecking"},
         {"name":"dead_check_ok", "from":"kMinionDeadChecking", "to":"kMinionAlive"},
         {"name":"dead_check_fails", "from":"kMinionDeadChecking", "to":"kMinionRestarting"},
         {"name":"restart_ok", "from":"kMinionRestarting", "to":"kMinionAlive"},
@@ -14,5 +14,6 @@
       ],
    "callbacks":[
         {"name":"restart_ok", "after":["start_init"]}
+        {"name":"dead_check_ok", "after":["start_init"]}
    ]
  }
