@@ -3,8 +3,13 @@
 // found in the LICENSE file.
 
 #include <gflags/gflags.h>
-DEFINE_string(fsm_conf_path, "minon_fsm.json", "fsm conf path");
 DEFINE_string(lumia_ctrl_port, "8080", "lumia controller port");
+DEFINE_string(minion_dict, "dict/minion.pb.dict", "minion dict");
+DEFINE_string(scripts_dir, "scripts", "scripts dir");
+
+DEFINE_string(rms_api_http_host, "xxx", "rms api http host");
+DEFINE_string(ccs_api_http_host, "xxx", "ccs api http host");
+
 DEFINE_string(rms_token, "b4631c7cb697d9ee7080126b18dd09abcfad79eb", "rms token");
 DEFINE_string(rms_app_key, "112", "rms app key");
 DEFINE_string(rms_auth_user, "wangtaize", "rms auth user");

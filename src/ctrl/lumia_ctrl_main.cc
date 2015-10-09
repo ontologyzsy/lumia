@@ -6,6 +6,7 @@
 #include <sofa/pbrpc/pbrpc.h>
 #include <logging.h>
 #include <signal.h>
+#include "baas-lib-c/baas.h"
 
 using baidu::common::Log;
 using baidu::common::FATAL;
@@ -14,6 +15,8 @@ using baidu::common::WARNING;
 
 
 DECLARE_string(lumia_ctrl_port);
+DECLARE_string(minion_dict);
+DECLARE_string(scripts_dir);
 
 static volatile bool s_quit = false;
 static void SignalIntHandler(int /*sig*/){
@@ -21,10 +24,21 @@ static void SignalIntHandler(int /*sig*/){
 }
 
 int main(int argc, char* args[]) {
+    baas::BAAS_Init();
     ::google::ParseCommandLineFlags(&argc, &args, true);
     sofa::pbrpc::RpcServerOptions options;
     sofa::pbrpc::RpcServer rpc_server(options);
     ::baidu::lumia::LumiaCtrlImpl* ctrl = new ::baidu::lumia::LumiaCtrlImpl();
+    bool ok = ctrl->LoadMinion(FLAGS_minion_dict);
+    if (!ok) {
+        LOG(FATAL, "fail to load minion dict");
+        exit(-1);
+    }
+    ok = ctrl->LoadScripts(FLAGS_scripts_dir);
+    if (!ok) {
+        LOG(FATAL, "fail to load scripts");
+        exit(-1);
+    }
     if (!rpc_server.RegisterService(ctrl)) {
         LOG(FATAL, "failed to register lumia controller");
         exit(-1);
@@ -33,6 +47,8 @@ int main(int argc, char* args[]) {
     if (!rpc_server.Start(server_addr)) {
         LOG(FATAL, "failed to start lumia controller on %s", server_addr.c_str());
         exit(-2);
+    }else {
+        LOG(INFO, "start lumia with port %s", FLAGS_lumia_ctrl_port.c_str());
     }  
     signal(SIGINT, SignalIntHandler);
     signal(SIGTERM, SignalIntHandler);
@@ -40,6 +56,4 @@ int main(int argc, char* args[]) {
         sleep(1);
     }
     return 0;
-
-
 }

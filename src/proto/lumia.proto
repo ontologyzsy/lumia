@@ -1,9 +1,13 @@
 package baidu.lumia;
 
 option cc_generic_services = true;
+option py_generic_services = true;
 
 enum LumiaStatus {
     kLumiaOk = 0;
+    kLumiaMinionNotFound = 1;
+    kLumiaMinionInProcess = 2;
+    kLumiaScriptNotFound = 3;
 }
 
 enum MinionState {
@@ -16,11 +20,36 @@ enum MinionState {
     kMinionError = 6;
 }
 
+message Cpu {
+    optional string clock = 1;
+    optional int32 count = 2;
+}
+
+message Memory {
+    optional int64 size = 1;
+    optional int32 count = 2;
+}
+
+message Disk {
+    optional int64 size = 1;
+    optional int32 count = 2;
+    optional int32 speed = 3;
+}
+
 message Minion {
     optional string id = 1;
     optional string ip = 2;
-    optional string hostname = 3;
-    optional MinionState state = 4;
+    optional string rock_ip = 3;
+    optional string hostname = 4;
+    optional MinionState state = 5;
+    
+    optional Cpu cpu = 6;
+    optional Memory mem = 7;
+    optional Disk disk = 8;
+    optional Disk flash = 9;
+    optional int32 bandwidth = 10;
+
+    optional string datacenter = 11;
 }
 
 message ReportDeadMinionRequest {
@@ -30,6 +59,10 @@ message ReportDeadMinionRequest {
 
 message ReportDeadMinionResponse {
     optional LumiaStatus status = 1; 
+}
+
+message LumiaMinions {
+    repeated Minion minions = 1;
 }
 
 service LumiaCtrl {

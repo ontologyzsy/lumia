@@ -25,7 +25,7 @@ struct ExecContext {
 class MinionCtrl {
 public:
     MinionCtrl(const std::string& ccs_http_server,
-                const std::string& rms_http_server);
+               const std::string& rms_http_server);
     bool Exec(const std::string& script,
               const std::vector<std::string>& hosts,
               const std::string& account,

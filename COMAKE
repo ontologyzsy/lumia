@@ -43,11 +43,22 @@ CONFIGS('bdg/log/build-64/libs/thirdparty/rapidjson@1.0.0.0')
 CONFIGS('third-64/leveldb@base')
 CONFIGS('public/noah/giano-lib/release/baas-lib-c@ci-base')
 
-lumia_ctrl_src='src/ctrl/lumia_ctrl_main.cc\
+lumia_ctrl_src = 'src/ctrl/lumia_ctrl_main.cc\
                 src/ctrl/lumia_ctrl_impl.cc\
                 src/proto/lumia.proto\
                 src/flags.cc\
                 src/ctrl/minion_ctrl.cc\
                 src/ctrl/http_client.cc'
-Application('lumia',Sources(lumia_ctrl_src))
+
+lumia_sdk_src = 'src/sdk/lumia.cc\
+                 src/proto/lumia.proto'
+
+lumia_client_src = 'src/client/lumia_client.cc\
+                    src/sdk/lumia.cc\
+                    src/proto/lumia.proto'
+
+lumia_headers = 'src/sdk/lumia.h'
+StaticLibrary('lumia',Sources(lumia_sdk_src),HeaderFiles(lumia_headers))
+Application('lumia_server',Sources(lumia_ctrl_src))
+Application('lumia',Sources(lumia_client_src))
 
