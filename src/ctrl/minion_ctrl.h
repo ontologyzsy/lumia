@@ -11,7 +11,7 @@
 
 namespace baidu {
 namespace lumia {
-typedef boost::function<void (const std::string& sessionid, const std::vector<std::string>& success, const std::vector<std::string>& fails)> CallBack;
+typedef boost::function<void (const std::string sessionid, const std::vector<std::string> success, const std::vector<std::string> fails)> CallBack;
 struct ExecContext {
     std::string sessionid;
     std::string script;
@@ -20,6 +20,7 @@ struct ExecContext {
     int32_t concurrency;
     CallBack callback;
     std::string jobid;
+    int32_t try_count;
 };
 
 class MinionCtrl {
@@ -33,7 +34,8 @@ public:
               std::string* sessionid,
               const CallBack& callback);
     bool Reboot(const std::vector<std::string>& hosts,
-                const CallBack& callback);
+                const CallBack& callback,
+                std::string* sessionid);
     ~MinionCtrl();
 private:
     bool BuildJob(const std::string& script,
@@ -45,6 +47,9 @@ private:
     bool GenerateTicket(std::string* ticket, std::string* service);
 
     void CheckExecJob(const std::string& sessionid);
+    void HandleJobFinished(const std::string& sessionid);
+
+    void CheckRebootJob(const std::string& sessionid);
 
     bool BuildRebootJob(const std::vector<std::string>& hosts,
                         std::string* query_str);
@@ -55,7 +60,8 @@ private:
     std::string ccs_http_server_;
     std::string rms_http_server_;
     HttpClient http_client_;
-    ::baidu::common::ThreadPool checker_;
+    ::baidu::common::ThreadPool http_workers_;
+    ::baidu::common::ThreadPool call_back_workers_;
     std::map<std::string, ExecContext> exec_sessions_;
     Mutex mutex_;
 };

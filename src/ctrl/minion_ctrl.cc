@@ -20,14 +20,18 @@ DECLARE_int32(exec_job_check_interval);
 DECLARE_string(rms_token);
 DECLARE_string(rms_app_key);
 DECLARE_string(rms_auth_user);
+DECLARE_string(rms_api_check_job);
+
 namespace baidu {
 namespace lumia {
 
 MinionCtrl::MinionCtrl(const std::string& ccs_http_server,
-                         const std::string& rms_http_server):ccs_http_server_(ccs_http_server),
+                       const std::string& rms_http_server):ccs_http_server_(ccs_http_server),
     rms_http_server_(rms_http_server),
-    http_client_(){
-    
+    http_client_(),
+    http_workers_(4),
+    call_back_workers_(4){
+
 }
 
 MinionCtrl::~MinionCtrl(){}
@@ -81,8 +85,9 @@ bool MinionCtrl::Exec(const std::string& script,
         context.sessionid = id;
         context.script = script;
         context.callback = callback;
+        context.try_count = 0;
         context.concurrency = concurrency;
-        checker_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, id));
+        http_workers_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, id));
         return true;
     }else{
         LOG(WARNING, "submit cmd fails for %s", doc["msg"].GetString());
@@ -105,7 +110,7 @@ void MinionCtrl::CheckExecJob(const std::string& sessionid) {
     bool ok = http_client_.Get(&request, &response);
     if (!ok) {
         LOG(WARNING, "fail get job %s task status from %s",it->second.jobid.c_str(), request.url.c_str());
-        checker_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, sessionid));
+        http_workers_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, sessionid));
         return;
     }
     rapidjson::Document doc;
@@ -116,32 +121,91 @@ void MinionCtrl::CheckExecJob(const std::string& sessionid) {
             request.url.c_str(),
             context.jobid.c_str());
         // TODO error count
-        checker_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, sessionid));
+        http_workers_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, sessionid));
         return;
     }
     if (!doc.HasMember("code")
         || doc["code"].GetInt() != 0) {
         LOG(WARNING, "fail get job %s task status %s", context.jobid.c_str(), response.body.c_str());
-        checker_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, sessionid));
+        http_workers_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, sessionid));
         return;
     }
     if (!doc.HasMember("data")) {
         std::vector<std::string> place_holder;
-        context.callback(sessionid, place_holder, place_holder);
+        call_back_workers_.AddTask(boost::bind(context.callback, sessionid, place_holder, place_holder));
         exec_sessions_.erase(sessionid);
     }
     if (doc["data"]["jobStatus"] == "FINISH"
        || doc["data"]["jobStatus"] == "CANCELED") {
         LOG(INFO, "job %s is completed with status %s", context.jobid.c_str(), doc["data"]["jobStatus"].GetString());
-        std::vector<std::string> place_holder;
-        context.callback(sessionid, context.hosts, place_holder);
-        exec_sessions_.erase(sessionid);
+        http_workers_.AddTask(boost::bind(&MinionCtrl::HandleJobFinished,
+              this, sessionid));
     } else {
         LOG(INFO, "job %s is running with status %s", context.jobid.c_str(), doc["data"]["jobStatus"].GetString());
-        checker_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, sessionid));
+        http_workers_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::CheckExecJob, this, sessionid));
     }
 
 }
+
+void MinionCtrl::HandleJobFinished(const std::string& sessionid) {
+    MutexLock lock(&mutex_);
+    std::map<std::string, ExecContext>::iterator it = exec_sessions_.find(sessionid);
+    if (it == exec_sessions_.end()) {
+        LOG(WARNING, "sessionid %s does not exist ", sessionid.c_str());
+        return;
+    }
+    ExecContext& context = it->second;
+    LOG(INFO, "handle job %s completed", context.jobid.c_str());
+    HttpGetRequest request;
+    request.url = ccs_http_server_ + "/job/queryTaskList?jobId=" + context.jobid.c_str();
+    HttpResponse response;
+    bool ok = http_client_.Get(&request, &response);
+    if (!ok) {
+        LOG(WARNING, "fail get job %s task status from %s",it->second.jobid.c_str(), request.url.c_str());
+        if (context.try_count <= 5) {
+            http_workers_.DelayTask(FLAGS_exec_job_check_interval, boost::bind(&MinionCtrl::HandleJobFinished, this, sessionid));
+            context.try_count += 1;
+        }else {
+            std::vector<std::string> succ;
+            call_back_workers_.AddTask(boost::bind(context.callback, sessionid, succ, context.hosts));
+            exec_sessions_.erase(sessionid);
+        }
+        return;
+    }
+    rapidjson::Document doc;
+    doc.Parse(response.body.c_str());
+    if (!doc.IsObject()) {
+        LOG(WARNING, "fail to parse response %s for request %s jobid %s", 
+            response.body.c_str(),
+            request.url.c_str(),
+            context.jobid.c_str());
+        return;
+    }
+    if (!doc.HasMember("code")
+        || doc["code"].GetInt() != 0) {
+        LOG(WARNING, "fail get job %s task status %s", context.jobid.c_str(), response.body.c_str());
+        return;
+    }
+    if (doc.HasMember("data")) {
+        const rapidjson::Value& data = doc["data"];
+        std::vector<std::string> succ;
+        std::vector<std::string> fails;
+        for (rapidjson::SizeType i = 0; i < data.Size(); i++) {
+            std::string host = data[i]["host"].GetString();
+            if (data[i]["taskStatus"].GetString() == "EXITED" 
+                && data[i]["exitCode"].GetInt() == 0) {
+                LOG(INFO, "exec job %s on host %s successfully", context.jobid.c_str(), host.c_str());
+                succ.push_back(host);
+            }else {
+                LOG(WARNING, "exec job %s on host %s fails", context.jobid.c_str(), host.c_str());
+                fails.push_back(host);
+            }
+        }
+        call_back_workers_.AddTask(boost::bind(context.callback, sessionid, succ, fails));
+        exec_sessions_.erase(sessionid);
+    }
+}
+
 
 bool MinionCtrl::GenerateTicket(std::string* ticket, 
                                  std::string* service) {
@@ -200,7 +264,8 @@ bool MinionCtrl::BuildJob(const std::string& script,
 }
 
 bool MinionCtrl::Reboot(const std::vector<std::string>& hosts,
-                         const CallBack& callback) {
+                        const CallBack& callback,
+                        std::string* sessionid) {
     MutexLock lock(&mutex_);
     std::string access_token;
     bool ok = GetRmsAccessToken(&access_token);
@@ -234,10 +299,46 @@ bool MinionCtrl::Reboot(const std::vector<std::string>& hosts,
     }
     if (doc.HasMember("status") && doc["status"].GetInt() ==0) {
         LOG(INFO, "reboot %s successfully with id %s ", query_str.c_str(), doc["data"]["list_id"].GetString());
+        boost::uuids::uuid uuid = boost::uuids::random_generator()();
+        std::string id = boost::lexical_cast<std::string>(uuid); 
+        *sessionid = id;
+        ExecContext& context = exec_sessions_[id];
+        context.hosts = hosts;
+        context.jobid = doc["data"]["list_id"].GetString();
+        context.sessionid = id;
+        context.try_count = 0;
+        context.callback = callback;
         return true;
     }
     return false;
 }
+
+void MinionCtrl::CheckRebootJob(const std::string& sessionid) {
+    MutexLock lock(&mutex_);
+    std::map<std::string, ExecContext>::iterator c_it = exec_sessions_.find(sessionid);
+    if (c_it == exec_sessions_.end()) {
+        LOG(WARNING, "session with %s has been expired", sessionid.c_str());
+        return;
+    }
+    ExecContext& context = c_it->second;
+    HttpGetRequest request;
+    request.url = FLAGS_rms_api_check_job + context.jobid;
+    HttpResponse response;
+    bool ok = http_client_.Get(&request, &response);
+    if (!ok) {
+        LOG(WARNING, "fail to get rms job %s status", context.jobid.c_str());
+        if (context.try_count <= 0) {
+            context.try_count += 1;
+            http_workers_.DelayTask(FLAGS_exec_job_check_interval,
+                          boost::bind(&MinionCtrl::CheckRebootJob, this, sessionid));
+        } else {
+            exec_sessions_.erase(sessionid);
+        }
+        return;
+    }
+
+}
+
 
 bool MinionCtrl::BuildRebootJob(const std::vector<std::string>& hosts,
                                  std::string* query_str) {

@@ -32,8 +32,8 @@ void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controll
                           ::baidu::lumia::ReportDeadMinionResponse* response,
                           ::google::protobuf::Closure* done) {
     LOG(INFO, "report dead minion %s for %s", request->ip().c_str(), request->reason().c_str());
-    std::map<std::string, Minion>::iterator m_it = minions_.find(request->ip());
-    if (m_it == minions_.end()) {
+    std::map<std::string, Minion>::iterator m_it = ip_minions_.find(request->ip());
+    if (m_it == ip_minions_.end()) {
         LOG(WARNING, "minion with ip %s is not found", request->ip().c_str());
         response->set_status(kLumiaMinionNotFound);
         done->Run();
@@ -53,7 +53,7 @@ void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controll
 }
 
 void LumiaCtrlImpl::HandleDeadReport(const std::string& ip) {
-    std::map<std::string, Minion>::iterator m_it = minions_.find(ip);
+    std::map<std::string, Minion>::iterator m_it = ip_minions_.find(ip);
     std::map<std::string, std::string>::iterator sc_it = scripts_.find("minion-dead-check.sh");
     std::vector<std::string> hosts;
     hosts.push_back(m_it->second.hostname());
@@ -70,27 +70,57 @@ void LumiaCtrlImpl::HandleDeadReport(const std::string& ip) {
     }
 }
 
-void LumiaCtrlImpl::CheckDeadCallBack(const std::string& sessionid,
-                                      const std::vector<std::string>& success,
-                                      const std::vector<std::string>& fails) {
 
+void LumiaCtrlImpl::CheckDeadCallBack(const std::string sessionid,
+                                      const std::vector<std::string> success,
+                                      const std::vector<std::string> fails) {
+    LOG(INFO, "dead check with session %s  callback", sessionid.c_str());
+    // TODO ccs 
+    // reboot fails
+    std::vector<std::string> fail_ids;
+    for (size_t i = 0; i < fails.size(); i++) {
+        std::map<std::string, Minion>::iterator it = host_minions_.find(fails[i]);
+        if (it == host_minions_.end()) {
+            LOG(WARNING, "%s has no rms id", fails[i].c_str());
+            continue;
+        }
+        fail_ids.push_back(it->second.id());
+    }
+    if (fail_ids.size() > 0) {
+        bool ok = minion_ctrl_->Reboot(fail_ids,
+                                   boost::bind(&LumiaCtrlImpl::RebootCallBack, this, _1, _2, _3));
+        if (!ok) {
+            LOG(WARNING, "fail to submit reboot to rms with dead check session %s", sessionid.c_str());
+            return;
+        } 
+    }
+   
+    // TODO init
+}
+
+void LumiaCtrlImpl::RebootCallBack(const std::string sessionid,
+                                   const std::vector<std::string> success,
+                                    const std::vector<std::string> fails) {
+
+    LOG(INFO, "reboot call back");
 }
 
 bool LumiaCtrlImpl::LoadMinion(const std::string& path) {
     LOG(INFO, "load minion dict %s", path.c_str());
-    std::ifstream minions_is;
-    minions_is.open(path.c_str(), std::ifstream::binary);
+    std::ifstream ip_minions_is;
+    ip_minions_is.open(path.c_str(), std::ifstream::binary);
     char buffer[1024];
     std::stringstream ss;
-    while(minions_is.good()) {
-        minions_is.read(buffer, 1024);
-        int32_t read_count = minions_is.gcount();
+    while(ip_minions_is.good()) {
+        ip_minions_is.read(buffer, 1024);
+        int32_t read_count = ip_minions_is.gcount();
         ss.write(buffer, read_count);
     }
     LumiaMinions minions;
     minions.ParseFromString(ss.str());
     for (int i = 0; i < minions.minions_size(); i++) {
-        minions_.insert(std::make_pair(minions.minions(i).ip(), minions.minions(i)));
+        ip_minions_.insert(std::make_pair(minions.minions(i).ip(), minions.minions(i)));
+        host_minions_.insert(std::make_pair(minions.minions(i).hostname(), minions.minions(i)));
     }
     LOG(INFO, "load %d minions", minions.minions_size());
     return true;

@@ -29,12 +29,17 @@ public:
 
 private:
     void HandleDeadReport(const std::string& ip);
-    void CheckDeadCallBack(const std::string& sessionid, 
-                           const std::vector<std::string>& success,
-                           const std::vector<std::string>& fails);
+    void CheckDeadCallBack(const std::string sessionid, 
+                           const std::vector<std::string> success,
+                           const std::vector<std::string> fails);
+    void RebootCallBack(const std::string sessionid,
+                        const std::vector<std::string> sucesss,
+                        const std::vector<std::string> fails);
 private:
     // readonly ip -> minion pairs
-    std::map<std::string, Minion> minions_;
+    std::map<std::string, Minion> ip_minions_;
+    // readonly host -> minion pairs
+    std::map<std::string, Minion> host_minions_;
     ::baidu::common::Mutex mutex_;
     ::baidu::common::ThreadPool checker_;
     MinionCtrl* minion_ctrl_;
