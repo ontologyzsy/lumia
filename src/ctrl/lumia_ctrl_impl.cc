@@ -32,6 +32,7 @@ void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controll
                           const ::baidu::lumia::ReportDeadMinionRequest* request,
                           ::baidu::lumia::ReportDeadMinionResponse* response,
                           ::google::protobuf::Closure* done) {
+    MutexLock lock(&mutex_);
     LOG(INFO, "report dead minion %s for %s", request->ip().c_str(), request->reason().c_str());
     const minion_set_ip_index_t& index = boost::multi_index::get<ip_tag>(minion_set_);
     minion_set_ip_index_t::const_iterator i_it = index.find(request->ip());
@@ -43,6 +44,12 @@ void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controll
         return;
     }
 
+    if (i_it->minion_->state() != kMinionAlive) {
+        LOG(WARNING, "minion with state %s does not accept dead check", MinionState_Name(i_it->minion_->state()).c_str());
+        response->set_status(kLumiaMinionInProcess);
+        done->Run();
+        return;
+    }
     std::map<std::string, std::string>::iterator sc_it = scripts_.find("minion-dead-check.sh");
     if (sc_it == scripts_.end()) {
         LOG(WARNING, "minion-dead-check.sh is not found");
@@ -50,12 +57,14 @@ void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controll
         done->Run();
         return;
     }
+    i_it->minion_->set_state(kMinionDeadChecking);
     workers_.AddTask(boost::bind(&LumiaCtrlImpl::HandleDeadReport, this, request->ip()));
     response->set_status(kLumiaOk);
     done->Run();
 }
 
 void LumiaCtrlImpl::HandleDeadReport(const std::string& ip) {
+    MutexLock lock(&mutex_);
     const minion_set_ip_index_t& index = boost::multi_index::get<ip_tag>(minion_set_);
     minion_set_ip_index_t::const_iterator i_it = index.find(ip);
 
@@ -132,14 +141,27 @@ void LumiaCtrlImpl::HandleInitAgent(const std::vector<std::string> hosts) {
 void LumiaCtrlImpl::InitAgentCallBack(const std::string sessionid,
                                       const std::vector<std::string> success,
                                       const std::vector<std::string> fails) {
+    MutexLock lock(&mutex_);
     LOG(INFO, "init agent call back succ %s, fails %s", boost::algorithm::join(success, ",").c_str(),
-      boost::algorithm::join(fails, ",").c_str());
+      boost::algorithm::join(fails, ",").c_str()); 
+    const minion_set_hostname_index_t& index = boost::multi_index::get<hostname_tag>(minion_set_);
+    for (size_t i = 0; i < success.size(); i++) {
+        minion_set_hostname_index_t::const_iterator it = index.find(success[i]);
+        if (it == index.end()) {
+            LOG(WARNING, "agent with hostname %s does not exist in lumia", success[i].c_str());
+            continue;
+        }
+        // galaxy agent alive means agent alive
+        it->minion_->set_state(kMinionAlive);
+    }
 }
 
 
 void LumiaCtrlImpl::RebootCallBack(const std::string sessionid,
                                    const std::vector<std::string> success,
-                                   const std::vector<std::string> fails){  
+                                   const std::vector<std::string> fails){ 
+
+    MutexLock lock(&mutex_);
     std::vector<std::string> hosts_ok;
     const minion_set_id_index_t& index = boost::multi_index::get<id_tag>(minion_set_);
     for (size_t i = 0; i < success.size(); i++) {
@@ -171,6 +193,7 @@ void LumiaCtrlImpl::RebootCallBack(const std::string sessionid,
 }
 
 bool LumiaCtrlImpl::LoadMinion(const std::string& path) {
+    MutexLock lock(&mutex_);
     LOG(INFO, "load minion dict %s", path.c_str());
     std::ifstream ip_minions_is;
     ip_minions_is.open(path.c_str(), std::ifstream::binary);
@@ -186,6 +209,7 @@ bool LumiaCtrlImpl::LoadMinion(const std::string& path) {
     for (int i = 0; i < minions.minions_size(); i++) {
         Minion* m = new Minion();
         m->CopyFrom(minions.minions(i));
+        m->set_state(kMinionAlive);
         MinionIndex m_index(m->id(), m->hostname(), m->ip(), m);
         minion_set_.insert(m_index);
     }
@@ -220,6 +244,39 @@ bool LumiaCtrlImpl::LoadScripts(const std::string& folder) {
         scripts_.insert(std::make_pair(filename, ss.str()));
     }
     return true;
+}
+
+void LumiaCtrlImpl::GetMinion(::google::protobuf::RpcController* /*controller*/,
+                   const ::baidu::lumia::GetMinionRequest* request,
+                   ::baidu::lumia::GetMinionResponse* response,
+                   ::google::protobuf::Closure* done) {
+    MutexLock lock(&mutex_);
+    const minion_set_ip_index_t& ip_index = boost::multi_index::get<ip_tag>(minion_set_);
+    for (int i = 0; i < request->ips_size(); i++) {
+        minion_set_ip_index_t::const_iterator it = ip_index.find(request->ips(i));
+        if (it != ip_index.end()) {
+            Minion* minion = response->add_minions();
+            minion->CopyFrom(*(it->minion_));
+        }    
+    }
+    const minion_set_hostname_index_t& ht_index = boost::multi_index::get<hostname_tag>(minion_set_);
+    for (int i = 0; i < request->hostnames_size(); i++) {
+        minion_set_hostname_index_t::const_iterator it = ht_index.find(request->hostnames(i));
+        if (it != ht_index.end()) {
+            Minion* minion = response->add_minions();
+            minion->CopyFrom(*(it->minion_));
+        }
+    }
+    const minion_set_id_index_t& id_index = boost::multi_index::get<id_tag>(minion_set_);
+    for (int i = 0; i < request->ids_size(); i++) {
+        minion_set_id_index_t::const_iterator it  = id_index.find(request->ids(i));
+        if (it != id_index.end()) {
+            Minion* minion = response->add_minions();
+            minion->CopyFrom(*(it->minion_));
+        }
+    }
+    done->Run();
+
 }
 
 }

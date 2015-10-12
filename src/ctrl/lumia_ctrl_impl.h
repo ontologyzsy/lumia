@@ -57,6 +57,10 @@ public:
                           ::baidu::lumia::ReportDeadMinionResponse* response,
                           ::google::protobuf::Closure* done);
 
+    void GetMinion(::google::protobuf::RpcController* controller,
+                   const ::baidu::lumia::GetMinionRequest* request,
+                   ::baidu::lumia::GetMinionResponse* response,
+                   ::google::protobuf::Closure* done);
 
 private:
     void HandleDeadReport(const std::string& ip);

@@ -65,6 +65,17 @@ message LumiaMinions {
     repeated Minion minions = 1;
 }
 
+message GetMinionRequest {
+    repeated string ips = 1;
+    repeated string hostnames = 2;
+    repeated string ids = 3;
+}
+
+message GetMinionResponse {
+    repeated Minion minions = 1;
+}
+
 service LumiaCtrl {
     rpc ReportDeadMinion(ReportDeadMinionRequest) returns (ReportDeadMinionResponse);
+    rpc GetMinion(GetMinionRequest) returns (GetMinionResponse);
 }
