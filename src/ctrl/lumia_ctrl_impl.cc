@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 #include "ctrl/lumia_ctrl_impl.h"
 
+#include <boost/algorithm/string/join.hpp>
 #include <unistd.h>
 #include <gflags/gflags.h>
 #include <boost/function.hpp>
@@ -18,7 +19,7 @@ DECLARE_string(ccs_api_http_host);
 namespace baidu {
 namespace lumia {
 
-LumiaCtrlImpl::LumiaCtrlImpl():checker_(4){
+LumiaCtrlImpl::LumiaCtrlImpl():workers_(4){
     minion_ctrl_ = new MinionCtrl(FLAGS_ccs_api_http_host,
                                   FLAGS_rms_api_http_host);
 }
@@ -99,16 +100,36 @@ void LumiaCtrlImpl::CheckDeadCallBack(const std::string sessionid,
             LOG(WARNING, "fail to submit reboot to rms with dead check session %s", sessionid.c_str());
             return;
         } 
-    }
-   
-    // TODO init
+    }   
 }
 
 void LumiaCtrlImpl::RebootCallBack(const std::string sessionid,
                                    const std::vector<std::string> success,
-                                   const std::vector<std::string> fails) {
+                                   const std::vector<std::string> fails){  
+    std::vector<std::string> hosts_ok;
+    const minion_set_id_index_t index = boost::multi_index::get<id_tag>(minion_set_);
+    for (size_t i = 0; i < success.size(); i++) {
+        minion_set_id_index_t::const_iterator it = index.find(success[i]);
+        if (it == index.end()) {
+            LOG(WARNING, "host with id %s does not exist in lumia", success[i].c_str());
+            continue;
+        }
+        hosts_ok.push_back(it->hostname_);
+    }
 
-    LOG(INFO, "reboot call back");
+    
+    std::vector<std::string> hosts_err;
+    for (size_t i = 0; i < fails.size(); i++) {
+        minion_set_id_index_t::const_iterator it = index.find(success[i]);
+        if (it == index.end()) {
+            LOG(WARNING, "host with id %s does not exist in lumia", success[i].c_str());
+            continue;
+        }
+        hosts_err.push_back(it->hostname_);
+    }
+    LOG(INFO, "reboot call back succ hosts %s, fails hosts %s",
+        boost::algorithm::join(hosts_ok, ",").c_str(),
+        boost::algorithm::join(hosts_err, ","));
 
 }
 

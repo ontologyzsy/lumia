@@ -4,6 +4,7 @@
 
 #include "ctrl/minion_ctrl.h"
 
+#include <boost/algorithm/string/join.hpp>
 #include "rapidjson/writer.h"
 #include <gflags/gflags.h>
 #include "rapidjson/document.h"
@@ -37,13 +38,16 @@ MinionCtrl::MinionCtrl(const std::string& ccs_http_server,
 MinionCtrl::~MinionCtrl(){}
 
 bool MinionCtrl::Exec(const std::string& script,
-                       const std::vector<std::string>& hosts,
-                       const std::string& account,
-                       int32_t concurrency,
-                       std::string* sessionid,
-                       const CallBack& callback) {
+                      const std::vector<std::string>& hosts,
+                      const std::string& account,
+                      int32_t concurrency,
+                      std::string* sessionid,
+                      const CallBack& callback) {
     MutexLock lock(&mutex_);
-    LOG(INFO, "exec %s with account %s", script.c_str(), account.c_str());
+    LOG(INFO, "exec %s with account %s on hosts %s",
+            script.c_str(), 
+            account.c_str(),
+            boost::algorithm::join(hosts, ",").c_str());
     std::string ticket;
     std::string service;
     bool ok = GenerateTicket(&ticket, &service);
@@ -75,7 +79,7 @@ bool MinionCtrl::Exec(const std::string& script,
     }
     if (doc.HasMember("code")
        && doc["code"].GetInt() == 0) {
-        LOG(INFO, "submit cmd with job %s",doc["data"]["jobId"].GetString());
+        LOG(INFO, "submit cmd with job %s successfully",doc["data"]["jobId"].GetString());
         boost::uuids::uuid uuid = boost::uuids::random_generator()();
         std::string id = boost::lexical_cast<std::string>(uuid); 
         *sessionid = id;
@@ -286,7 +290,7 @@ bool MinionCtrl::Reboot(const std::vector<std::string>& hosts,
         LOG(WARNING, "fail build job form");
         return false;
     }
-    LOG(INFO, "reboot query_str  %s", query_str.c_str());
+    LOG(INFO, "reboot hosts %s",  boost::algorithm::join(hosts, ",").c_str());
     request.url = rms_http_server_ + "/v1/unified_list/selfReboot?" + query_str;
     HttpResponse response;
     ok = http_client_.Get(&request, &response);

@@ -69,7 +69,7 @@ private:
 private:
     MinionSet minion_set_;
     ::baidu::common::Mutex mutex_;
-    ::baidu::common::ThreadPool checker_;
+    ::baidu::common::ThreadPool workers_;
     MinionCtrl* minion_ctrl_;
 
     // system check script config
