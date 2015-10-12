@@ -8,9 +8,40 @@
 #include "mutex.h"
 #include "thread_pool.h"
 #include "ctrl/minion_ctrl.h"
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/hashed_index.hpp>
 
 namespace baidu {
 namespace lumia {
+
+struct MinionIndex {
+    std::string id_;
+    std::string hostname_;
+    std::string ip_;
+    Minion* minion_;
+    MinionIndex(std::string id, const std::string& hostname, const std::string ip, Minion* minion):id_(id), hostname_(hostname), ip_(ip), minion_(minion){}
+};
+
+struct id_tag{};
+struct hostname_tag{};
+struct ip_tag{};
+
+typedef boost::multi_index_container<
+    MinionIndex,
+    boost::multi_index::indexed_by<
+        boost::multi_index::hashed_unique<boost::multi_index::tag<id_tag>,  BOOST_MULTI_INDEX_MEMBER(MinionIndex , std::string ,id_)>,
+        boost::multi_index::hashed_unique<boost::multi_index::tag<hostname_tag>, BOOST_MULTI_INDEX_MEMBER(MinionIndex, std::string, hostname_)>,
+        boost::multi_index::hashed_unique<boost::multi_index::tag<ip_tag>, BOOST_MULTI_INDEX_MEMBER(MinionIndex, std::string, ip_)>
+    >
+> MinionSet;
+
+typedef boost::multi_index::index<MinionSet, id_tag>::type minion_set_id_index_t;
+
+typedef boost::multi_index::index<MinionSet, hostname_tag>::type minion_set_hostname_index_t;
+
+typedef boost::multi_index::index<MinionSet, ip_tag>::type minion_set_ip_index_t;
 
 class LumiaCtrlImpl : public LumiaCtrl {
 
@@ -36,10 +67,7 @@ private:
                         const std::vector<std::string> sucesss,
                         const std::vector<std::string> fails);
 private:
-    // readonly ip -> minion pairs
-    std::map<std::string, Minion> ip_minions_;
-    // readonly host -> minion pairs
-    std::map<std::string, Minion> host_minions_;
+    MinionSet minion_set_;
     ::baidu::common::Mutex mutex_;
     ::baidu::common::ThreadPool checker_;
     MinionCtrl* minion_ctrl_;

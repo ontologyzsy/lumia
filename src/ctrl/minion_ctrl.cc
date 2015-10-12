@@ -192,12 +192,13 @@ void MinionCtrl::HandleJobFinished(const std::string& sessionid) {
         std::vector<std::string> fails;
         for (rapidjson::SizeType i = 0; i < data.Size(); i++) {
             std::string host = data[i]["host"].GetString();
-            if (data[i]["taskStatus"].GetString() == "EXITED" 
-                && data[i]["exitCode"].GetInt() == 0) {
+            std::string task_status = data[i]["taskStatus"].GetString();
+            int32_t exit_code = data[i]["exitCode"].GetInt();
+            if (task_status == "EXITED" && exit_code == 0) {
                 LOG(INFO, "exec job %s on host %s successfully", context.jobid.c_str(), host.c_str());
                 succ.push_back(host);
             }else {
-                LOG(WARNING, "exec job %s on host %s fails", context.jobid.c_str(), host.c_str());
+                LOG(WARNING, "exec job %s on host %s fails with task %s exit code %d", context.jobid.c_str(), host.c_str(), task_status.c_str(), exit_code);
                 fails.push_back(host);
             }
         }
@@ -258,6 +259,9 @@ bool MinionCtrl::BuildJob(const std::string& script,
         writer.String(hosts[i].c_str());
     }
     writer.EndArray();
+    writer.String("taskTimeout");
+    //30 minutes
+    writer.Int(1800000);
     writer.EndObject();
     *job = sb.GetString();
     return true;
@@ -308,6 +312,8 @@ bool MinionCtrl::Reboot(const std::vector<std::string>& hosts,
         context.sessionid = id;
         context.try_count = 0;
         context.callback = callback;
+        http_workers_.DelayTask(FLAGS_exec_job_check_interval,
+                               boost::bind(&MinionCtrl::CheckRebootJob, this, id));
         return true;
     }
     return false;
@@ -336,8 +342,21 @@ void MinionCtrl::CheckRebootJob(const std::string& sessionid) {
         }
         return;
     }
+    // TODO handle multi host
+    std::size_t found = response.body.find("已交付");
+    if (found !=std::string::npos) {
+        LOG(INFO, "reboot with sessionid %s complete", sessionid.c_str());
+        std::vector<std::string> place_holder;
+        call_back_workers_.AddTask(boost::bind(context.callback, sessionid, context.hosts, place_holder));
+        exec_sessions_.erase(sessionid);
+    } else {
+        http_workers_.DelayTask(FLAGS_exec_job_check_interval,
+                          boost::bind(&MinionCtrl::CheckRebootJob, this, sessionid));
 
+    }
 }
+
+
 
 
 bool MinionCtrl::BuildRebootJob(const std::vector<std::string>& hosts,
