@@ -50,7 +50,7 @@ void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controll
         done->Run();
         return;
     }
-    checker_.AddTask(boost::bind(&LumiaCtrlImpl::HandleDeadReport, this, request->ip()));
+    workers_.AddTask(boost::bind(&LumiaCtrlImpl::HandleDeadReport, this, request->ip()));
     response->set_status(kLumiaOk);
     done->Run();
 }
@@ -79,9 +79,10 @@ void LumiaCtrlImpl::HandleDeadReport(const std::string& ip) {
 void LumiaCtrlImpl::CheckDeadCallBack(const std::string sessionid,
                                       const std::vector<std::string> success,
                                       const std::vector<std::string> fails) {
-    LOG(INFO, "dead check with session %s  callback", sessionid.c_str());
-    // TODO ccs 
-    // reboot fails
+    LOG(INFO, "dead check with session %s  callback success host %s, fails %s",
+             sessionid.c_str(),
+             boost::algorithm::join(success, ",").c_str(),
+             boost::algorithm::join(fails, ",").c_str());
     const minion_set_hostname_index_t& h_index = boost::multi_index::get<hostname_tag>(minion_set_);
     std::vector<std::string> fail_ids;
     for (size_t i = 0; i < fails.size(); i++) {
@@ -100,14 +101,47 @@ void LumiaCtrlImpl::CheckDeadCallBack(const std::string sessionid,
             LOG(WARNING, "fail to submit reboot to rms with dead check session %s", sessionid.c_str());
             return;
         } 
-    }   
+    }  
+    if (success.size() > 0) {
+        HandleInitAgent(success);
+    }
+    
 }
+
+void LumiaCtrlImpl::HandleInitAgent(const std::vector<std::string> hosts) {
+
+    std::map<std::string, std::string>::iterator sc_it = scripts_.find("deploy-galaxy-agent.sh");
+    if (sc_it == scripts_.end()) {
+        LOG(WARNING, "deploy-galaxy-agent.sh does not exist in lumia");
+        return;
+    }
+    std::string sessionid;
+    bool ok = minion_ctrl_->Exec(sc_it->second, 
+                                hosts,
+                                "root",
+                                1,
+                                &sessionid,
+                                boost::bind(&LumiaCtrlImpl::InitAgentCallBack, this, _1, _2, _3));
+    if (!ok) {
+        LOG(WARNING, "fail to init agents %s", boost::algorithm::join(hosts, ",").c_str());
+        return;
+    }
+    LOG(INFO, "submit init cmd to agents %s successfully", boost::algorithm::join(hosts, ",").c_str());
+}
+
+void LumiaCtrlImpl::InitAgentCallBack(const std::string sessionid,
+                                      const std::vector<std::string> success,
+                                      const std::vector<std::string> fails) {
+    LOG(INFO, "init agent call back succ %s, fails %s", boost::algorithm::join(success, ",").c_str(),
+      boost::algorithm::join(fails, ",").c_str());
+}
+
 
 void LumiaCtrlImpl::RebootCallBack(const std::string sessionid,
                                    const std::vector<std::string> success,
                                    const std::vector<std::string> fails){  
     std::vector<std::string> hosts_ok;
-    const minion_set_id_index_t index = boost::multi_index::get<id_tag>(minion_set_);
+    const minion_set_id_index_t& index = boost::multi_index::get<id_tag>(minion_set_);
     for (size_t i = 0; i < success.size(); i++) {
         minion_set_id_index_t::const_iterator it = index.find(success[i]);
         if (it == index.end()) {
@@ -129,7 +163,10 @@ void LumiaCtrlImpl::RebootCallBack(const std::string sessionid,
     }
     LOG(INFO, "reboot call back succ hosts %s, fails hosts %s",
         boost::algorithm::join(hosts_ok, ",").c_str(),
-        boost::algorithm::join(hosts_err, ","));
+        boost::algorithm::join(hosts_err, ",").c_str());
+    if (success.size() > 0) {
+        workers_.DelayTask(10000, boost::bind(&LumiaCtrlImpl::HandleInitAgent, this, success));
+    }
 
 }
 
