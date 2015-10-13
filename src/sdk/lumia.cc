@@ -75,6 +75,9 @@ bool LumiaSdkImpl::GetMinion(const std::vector<std::string>& ips,
         minion.cpu.count = response.minions(i).cpu().count();
         minion.cpu.clock = response.minions(i).cpu().clock();
 
+        minion.mem.size = response.minions(i).mem().size();
+        minion.mem.count = response.minions(i).mem().count();
+
         minion.disk.size = response.minions(i).disk().size();
         minion.disk.count = response.minions(i).disk().count();
         minion.disk.speed = response.minions(i).disk().speed();
