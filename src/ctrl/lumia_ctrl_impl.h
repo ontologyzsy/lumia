@@ -7,11 +7,14 @@
 #include "proto/lumia.pb.h"
 #include "mutex.h"
 #include "thread_pool.h"
+#include "ins_sdk.h"
 #include "ctrl/minion_ctrl.h"
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/hashed_index.hpp>
+
+using ::galaxy::ins::sdk::InsSDK;
 
 namespace baidu {
 namespace lumia {
@@ -48,7 +51,7 @@ class LumiaCtrlImpl : public LumiaCtrl {
 public:
     LumiaCtrlImpl();
     ~LumiaCtrlImpl();
-
+    void Init();
     bool LoadMinion(const std::string& path);
     bool LoadScripts(const std::string& folder);
     // galaxy log checker report dead agent
@@ -61,7 +64,10 @@ public:
                    const ::baidu::lumia::GetMinionRequest* request,
                    ::baidu::lumia::GetMinionResponse* response,
                    ::google::protobuf::Closure* done);
+ 
+    void OnSessionTimeout();
 
+    void OnLockChange(const std::string& sessionid);
 private:
     void HandleDeadReport(const std::string& ip);
     void CheckDeadCallBack(const std::string sessionid, 
@@ -78,6 +84,9 @@ private:
 
     bool DoInitAgent(const std::vector<std::string> hosts,
                      const std::string scripts);
+
+    void AcquireLumiaLock();
+
 private:
     MinionSet minion_set_;
     ::baidu::common::Mutex mutex_;
@@ -90,6 +99,7 @@ private:
     // minion under process
     std::set<std::string> under_process_;
 
+    InsSDK* nexus_;
 };
 
 }

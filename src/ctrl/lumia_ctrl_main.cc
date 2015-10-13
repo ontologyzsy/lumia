@@ -15,8 +15,6 @@ using baidu::common::WARNING;
 
 
 DECLARE_string(lumia_ctrl_port);
-DECLARE_string(minion_dict);
-DECLARE_string(scripts_dir);
 
 static volatile bool s_quit = false;
 static void SignalIntHandler(int /*sig*/){
@@ -29,16 +27,7 @@ int main(int argc, char* args[]) {
     sofa::pbrpc::RpcServerOptions options;
     sofa::pbrpc::RpcServer rpc_server(options);
     ::baidu::lumia::LumiaCtrlImpl* ctrl = new ::baidu::lumia::LumiaCtrlImpl();
-    bool ok = ctrl->LoadMinion(FLAGS_minion_dict);
-    if (!ok) {
-        LOG(FATAL, "fail to load minion dict");
-        exit(-1);
-    }
-    ok = ctrl->LoadScripts(FLAGS_scripts_dir);
-    if (!ok) {
-        LOG(FATAL, "fail to load scripts");
-        exit(-1);
-    }
+    ctrl->Init();
     if (!rpc_server.RegisterService(ctrl)) {
         LOG(FATAL, "failed to register lumia controller");
         exit(-1);

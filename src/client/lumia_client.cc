@@ -7,11 +7,13 @@
 #include "sdk/lumia.h"
 #include <tprinter.h>
 #include <string_util.h>
+#include "ins_sdk.h"
 
 DEFINE_string(i, "", "Report dead minion with specify ip address");
-DEFINE_string(lumia_ctrl_host, "", "Lumia server host");
-DEFINE_string(lumia_ctrl_port, "", "Lumia server port");
 DECLARE_string(flagfile);
+DECLARE_string(nexus_servers);
+DECLARE_string(lumia_main);
+DECLARE_string(lumia_root_path);
 
 const std::string kLumiaUsage = "lumia client.\n"
                                  "Usage:\n"
@@ -20,13 +22,30 @@ const std::string kLumiaUsage = "lumia client.\n"
                                  "Options:\n"
                                  "    -i ip    Report dead minion with specify ip address\n";
 
+bool GetLumiaAddr(std::string* lumia_addr) {
+    if (lumia_addr == NULL) {
+        return false;
+    }
+    ::galaxy::ins::sdk::SDKError err;
+    ::galaxy::ins::sdk::InsSDK nexus(FLAGS_nexus_servers);
+    std::string path_key = FLAGS_lumia_root_path + FLAGS_lumia_main;
+    bool ok = nexus.Get(path_key, lumia_addr, &err);
+    return ok;
+}
+
 int ReportDeadMinion() {
     if (FLAGS_i.empty()) {
         fprintf(stderr, "-i is required\n");
         return -1;
     }
-    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(FLAGS_lumia_ctrl_host + ":" + FLAGS_lumia_ctrl_port);
-    bool ok = lumia->ReportDeadMinion(FLAGS_i, "client report");
+    std::string lumia_addr;
+    bool ok = GetLumiaAddr(&lumia_addr);
+    if (!ok) {
+        fprintf(stderr, "fail to get lumia addr");
+        return -1;
+    }
+    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
+    ok = lumia->ReportDeadMinion(FLAGS_i, "client report");
     if (ok) {
         fprintf(stdout, "report dead minion %s successfully\n", FLAGS_i.c_str());
         return 0;
@@ -39,13 +58,19 @@ int ShowMinion() {
     if (FLAGS_i.empty()) {
         fprintf(stderr, "-i is required\n");
         return -1;
-    } 
-    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(FLAGS_lumia_ctrl_host + ":" + FLAGS_lumia_ctrl_port);
+    }
+    std::string lumia_addr;
+    bool ok = GetLumiaAddr(&lumia_addr);
+    if (!ok) {
+        fprintf(stderr, "fail to get lumia addr");
+        return -1;
+    }
+    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
     std::vector<std::string> ips;
     ips.push_back(FLAGS_i);
     std::vector<std::string> place_holder;
     std::vector< ::baidu::lumia::MinionDesc> minions;
-    bool ok = lumia->GetMinion(ips, place_holder, place_holder, & minions);
+    ok = lumia->GetMinion(ips, place_holder, place_holder, & minions);
     if (!ok) {
         fprintf(stderr, "fail to get minions \n");
         return -1;

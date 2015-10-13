@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 #include "ctrl/lumia_ctrl_impl.h"
 
+#include "ctrl/lumia_ctrl_util.h"
 #include <boost/algorithm/string/join.hpp>
 #include <unistd.h>
 #include <gflags/gflags.h>
@@ -15,6 +16,13 @@
 
 DECLARE_string(rms_api_http_host);
 DECLARE_string(ccs_api_http_host);
+DECLARE_string(nexus_servers);
+DECLARE_string(lumia_lock);
+DECLARE_string(lumia_ctrl_port);
+DECLARE_string(lumia_main);
+DECLARE_string(minion_dict);
+DECLARE_string(scripts_dir);
+DECLARE_string(lumia_root_path);
 
 namespace baidu {
 namespace lumia {
@@ -22,13 +30,68 @@ namespace lumia {
 const static int64_t MEM_128G = 128 * 1024 * 1024 * 1024;
 const static int64_t MEM_64G = 64 * 1024 * 1024 * 1024;
 
+static void OnLumiaSessionTimeout(void* ctx) {
+    LumiaCtrlImpl* lumia = static_cast<LumiaCtrlImpl*>(ctx);
+    lumia->OnSessionTimeout();
+}
+
+static void OnLumiaLockChange(const ::galaxy::ins::sdk::WatchParam& param,
+  ::galaxy::ins::sdk::SDKError) {
+    LumiaCtrlImpl* lumia = static_cast<LumiaCtrlImpl*>(param.context);
+    lumia->OnLockChange(param.value);
+}
+
 LumiaCtrlImpl::LumiaCtrlImpl():workers_(4){
     minion_ctrl_ = new MinionCtrl(FLAGS_ccs_api_http_host,
                                   FLAGS_rms_api_http_host);
+    nexus_ = new ::galaxy::ins::sdk::InsSDK(FLAGS_nexus_servers);
 }
 
-LumiaCtrlImpl::~LumiaCtrlImpl(){
+void LumiaCtrlImpl::OnLockChange(const std::string& sessionid) {
+    std::string self_sessionid = nexus_->GetSessionID();
+    if (self_sessionid != sessionid) {
+        LOG(WARNING, "lumia lost lock");
+        abort();
+    }
+}
+
+
+LumiaCtrlImpl::~LumiaCtrlImpl() {
     delete minion_ctrl_;
+    delete nexus_;
+}
+
+void LumiaCtrlImpl::Init() {
+    AcquireLumiaLock();
+    bool ok = LoadMinion(FLAGS_minion_dict);
+    if (!ok) {
+        LOG(FATAL, "fail to load minion dict");
+    }
+    ok = LoadScripts(FLAGS_scripts_dir);
+    if (!ok) {
+        LOG(FATAL, "fail to load scripts");
+    } 
+}
+void LumiaCtrlImpl::OnSessionTimeout() {
+    LOG(WARNING, "time out with nexus");
+    abort();
+}
+
+void LumiaCtrlImpl::AcquireLumiaLock() {
+    std::string lock = FLAGS_lumia_root_path + FLAGS_lumia_lock;
+    ::galaxy::ins::sdk::SDKError err;
+    nexus_->RegisterSessionTimeout(&OnLumiaSessionTimeout, this);
+    bool ret = nexus_->Lock(lock, &err); //whould block until accquired
+    assert(ret && err == ::galaxy::ins::sdk::kOK);
+    std::string lumia_endpoint = LumiaUtil::GetHostName() + ":" + FLAGS_lumia_ctrl_port;
+    std::string lumia_key = FLAGS_lumia_root_path + FLAGS_lumia_main;
+    ret = nexus_->Put(lumia_key, lumia_endpoint, &err);
+    assert(ret && err == ::galaxy::ins::sdk::kOK);
+    ret = nexus_->Watch(lock, &OnLumiaLockChange, this, &err);
+    assert(ret && err == ::galaxy::ins::sdk::kOK);
+    LOG(INFO, "master lock [ok].  %s -> %s", 
+        lumia_key.c_str(), lumia_endpoint.c_str());
+
 }
 
 void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controller,
