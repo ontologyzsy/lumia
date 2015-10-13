@@ -75,6 +75,9 @@ private:
     void InitAgentCallBack(const std::string sessionid,
                            const std::vector<std::string> success,
                            const std::vector<std::string> fails);
+
+    bool DoInitAgent(const std::vector<std::string> hosts,
+                     const std::string scripts);
 private:
     MinionSet minion_set_;
     ::baidu::common::Mutex mutex_;
