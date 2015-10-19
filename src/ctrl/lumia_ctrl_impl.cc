@@ -5,6 +5,7 @@
 
 #include "ctrl/lumia_ctrl_util.h"
 #include <boost/algorithm/string/join.hpp>
+#include <boost/lexical_cast.hpp>
 #include <unistd.h>
 #include <gflags/gflags.h>
 #include <boost/function.hpp>
@@ -29,8 +30,8 @@ DECLARE_string(lumia_root_path);
 namespace baidu {
 namespace lumia {
 
-const static int64_t MEM_128G = 128 * 1024 * 1024 * 1024;
-const static int64_t MEM_64G = 64 * 1024 * 1024 * 1024;
+const static int64_t MEM_RESERVED = 6442450944;
+const static int32_t CPU_IDLE = 700;
 
 static void OnLumiaSessionTimeout(void* ctx) {
     LumiaCtrlImpl* lumia = static_cast<LumiaCtrlImpl*>(ctx);
@@ -269,9 +270,13 @@ void LumiaCtrlImpl::CheckDeadCallBack(const std::string sessionid,
 
 void LumiaCtrlImpl::HandleInitAgent(const std::vector<std::string> hosts) {
     MutexLock lock(&mutex_);
-    std::vector<std::string> host_64;
-    std::vector<std::string> host_128;
+    std::map<std::string, std::vector<std::string> > hosts_map;
     const minion_set_hostname_index_t& index = boost::multi_index::get<hostname_tag>(minion_set_);
+    std::map<std::string, std::string>::iterator sc_it = scripts_.find("deploy-galaxy-agent.tpl.sh");
+    if (sc_it == scripts_.end()) {
+        LOG(WARNING, "deploy-galaxy-agent.tpl.sh does not exist in lumia");
+        return;
+    }
     for (size_t i = 0; i < hosts.size(); i++) {
         minion_set_hostname_index_t::const_iterator it = index.find(hosts[i]);
         if (it == index.end()) {
@@ -279,30 +284,27 @@ void LumiaCtrlImpl::HandleInitAgent(const std::vector<std::string> hosts) {
             continue;
         }
         // TODO need better strategy 
-        int64_t total_mem = it->minion_->mem().count() * it->minion_->mem().size();
+        int64_t mem_share = it->minion_->mem().count() * it->minion_->mem().size() - MEM_RESERVED;
+        int32_t cpu_share = it->minion_->cpu().count() * CPU_IDLE; 
         it->minion_->set_state(kMinionIniting);
-        if (total_mem > MEM_64G) {
-            host_128.push_back(it->hostname_);
-        }else {
-            host_64.push_back(it->hostname_);
-        }
+        LOG(INFO, "start init minion with cpu share %d, mem share %ld", cpu_share, mem_share);
+        std::string deploy_script = sc_it->second;
+        std::string cpu_share_sc = "sed -i 's/--agent_millicores_share=.*/--agent_millicores_share=" + boost::lexical_cast<std::string>(cpu_share) + "/' conf/galaxy.flag\n";
+        std::string mem_share_sc = "sed -i 's/--agent_mem_share=.*/--agent_mem_share=" + boost::lexical_cast<std::string>(mem_share) + "/' conf/galaxy.flag\n";
+        deploy_script.append(cpu_share_sc);
+        deploy_script.append(mem_share_sc);
+        deploy_script.append("babysitter bin/galaxy-agent.conf stop >/dev/null 2>&1\n");
+        deploy_script.append("sleep 2\n");
+        deploy_script.append("babysitter bin/galaxy-agent.conf start\n");
+        std::vector<std::string>& hosts = hosts_map[deploy_script]; 
+        hosts.push_back(it->hostname_);
     }
-    if (host_64.size() > 0) {
-        std::map<std::string, std::string>::iterator sc_it = scripts_.find("deploy-galaxy-agent-60.sh");
-        if (sc_it == scripts_.end()) {
-            LOG(WARNING, "deploy-galaxy-agent-60.sh does not exist in lumia");
-            return;
+    std::map<std::string, std::vector<std::string> >::iterator it = hosts_map.begin();
+    for (; it != hosts_map.end(); it++) {
+        if (it->second.size() <= 0) {
+            continue;
         }
-        DoInitAgent(host_64, sc_it->second);
-    }
-
-    if (host_128.size() > 0) { 
-         std::map<std::string, std::string>::iterator sc_it = scripts_.find("deploy-galaxy-agent-120.sh");
-        if (sc_it == scripts_.end()) {
-            LOG(WARNING, "deploy-galaxy-agent-120.sh does not exist in lumia");
-            return;
-        }
-        DoInitAgent(host_128, sc_it->second);
+        DoInitAgent(it->second, it->first);
     }
 }
 

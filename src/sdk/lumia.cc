@@ -140,7 +140,7 @@ bool LumiaSdkImpl::ImportData(const std::string& dict_path,
    
     ImportDataResponse response;
     bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::ImportData,
-                                       &request, &response, 5, 1);
+                                       &request, &response, 100, 1);
     if (!ok || response.status() != kLumiaOk) {
         return false;
     }
