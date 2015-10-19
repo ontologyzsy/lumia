@@ -3,6 +3,9 @@
 // found in the LICENSE file.
 #include "sdk/lumia.h"
 
+#include <fstream>
+#include <sstream>
+#include <dirent.h>
 #include "rpc/rpc_client.h"
 #include "proto/lumia.pb.h"
 
@@ -11,7 +14,8 @@ namespace lumia {
 
 class LumiaSdkImpl : public LumiaSdk {
 public:
-    virtual ~LumiaSdkImpl(){}
+    LumiaSdkImpl(){}
+    ~LumiaSdkImpl(){}
     LumiaSdkImpl(const std::string& lumia_addr) {
         rpc_client_ = new ::baidu::galaxy::RpcClient();
         rpc_client_->GetStub(lumia_addr, &lumia_);
@@ -22,6 +26,8 @@ public:
                    const std::vector<std::string>& hostnames,
                    const std::vector<std::string>& ids,
                    std::vector<MinionDesc>* minions);
+    bool ImportData(const std::string& dict_path,
+                    const std::string& scripts_dir);
 private:
     ::baidu::galaxy::RpcClient* rpc_client_;
     LumiaCtrl_Stub* lumia_;
@@ -88,6 +94,61 @@ bool LumiaSdkImpl::GetMinion(const std::vector<std::string>& ips,
     }
     return true;
 }
+
+bool LumiaSdkImpl::ImportData(const std::string& dict_path,
+                              const std::string& scripts_dir) {
+    ImportDataRequest request;
+    if (!dict_path.empty()) {
+        std::ifstream ip_minions_is;
+        ip_minions_is.open(dict_path.c_str(), std::ifstream::binary);
+        char buffer[1024];
+        std::stringstream ss;
+        while(ip_minions_is.good()) {
+            ip_minions_is.read(buffer, 1024);
+            int32_t read_count = ip_minions_is.gcount();
+            ss.write(buffer, read_count);
+        }
+        request.mutable_minions()->ParseFromString(ss.str());
+    }
+    if (!scripts_dir.empty()) {
+        DIR *dir = opendir(scripts_dir.c_str());
+        if (dir == NULL) {
+            LOG(WARNING, "fail to open folder %s", scripts_dir.c_str());
+            return false;
+        }
+        struct dirent *dirp;
+        char buffer[1024];
+        while ((dirp = readdir(dir)) != NULL) {
+            std::string filename(dirp->d_name);
+            if (filename.compare(".") == 0 || filename.compare("..") == 0) {
+                continue;
+            }
+            std::string full_path = scripts_dir + "/" + filename;
+            std::ifstream script;
+            script.open(full_path.c_str(), std::ifstream::in);
+            std::stringstream ss;
+            while (script.good()) {
+                script.read(buffer, 1024);
+                int32_t count = script.gcount();
+                ss.write(buffer, count);
+            }
+            SystemScript* sc = request.mutable_scripts()->Add();
+            sc->set_name(filename);
+            sc->set_content(ss.str());
+        } 
+    }
+   
+    ImportDataResponse response;
+    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::ImportData,
+                                       &request, &response, 5, 1);
+    if (!ok || response.status() != kLumiaOk) {
+        return false;
+    }
+    return true;
+}
+
+LumiaSdk::LumiaSdk(){}
+LumiaSdk::~LumiaSdk(){}
 
 LumiaSdk* LumiaSdk::ConnectLumia(const std::string& lumia_addr){
     return new LumiaSdkImpl(lumia_addr);

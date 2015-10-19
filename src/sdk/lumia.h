@@ -44,14 +44,16 @@ struct MinionDesc {
 
 class LumiaSdk {
 public:
-    LumiaSdk(){}
-    virtual ~LumiaSdk(){}
+    LumiaSdk();
+    virtual ~LumiaSdk();
     static LumiaSdk* ConnectLumia(const std::string& lumia_addr);
     virtual bool ReportDeadMinion(const std::string& ip, const std::string& reason) = 0;
     virtual bool GetMinion(const std::vector<std::string>& ips,
                            const std::vector<std::string>& hostnames,
                            const std::vector<std::string>& ids,
                            std::vector<MinionDesc>* minions) = 0;
+    virtual bool ImportData(const std::string& dict_path,
+                            const std::string& scripts_dir) = 0;
 };
 
 }

@@ -23,3 +23,5 @@ DEFINE_string(lumia_root_path, "/baidu/lumia", "root path of lumia cluster on ne
 
 DEFINE_string(lumia_lock, "/lock", "root path of lumia lock on nexus, e.g /lock");
 DEFINE_string(lumia_main, "/main", "the path of lumia main ");
+DEFINE_string(lumia_minion, "/minion", "the path of lumia minion ");
+DEFINE_string(lumia_script, "/script", "the path of lumia script ");

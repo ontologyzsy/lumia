@@ -61,7 +61,7 @@ message ReportDeadMinionResponse {
     optional LumiaStatus status = 1; 
 }
 
-message LumiaMinions {
+message Minions {
     repeated Minion minions = 1;
 }
 
@@ -75,7 +75,22 @@ message GetMinionResponse {
     repeated Minion minions = 1;
 }
 
+message SystemScript {
+    optional string name = 1;
+    optional string content = 2;
+}
+
+message ImportDataRequest {
+    optional Minions minions = 1;
+    repeated SystemScript scripts = 2; 
+}
+
+message ImportDataResponse {
+    optional LumiaStatus status = 1;
+}
+
 service LumiaCtrl {
     rpc ReportDeadMinion(ReportDeadMinionRequest) returns (ReportDeadMinionResponse);
     rpc GetMinion(GetMinionRequest) returns (GetMinionResponse);
+    rpc ImportData(ImportDataRequest) returns (ImportDataResponse);
 }

@@ -10,6 +10,8 @@
 #include "ins_sdk.h"
 
 DEFINE_string(i, "", "Report dead minion with specify ip address");
+DEFINE_string(d, "", "Import minion dict from path");
+DEFINE_string(s, "", "Import system script from dir");
 DECLARE_string(flagfile);
 DECLARE_string(nexus_servers);
 DECLARE_string(lumia_main);
@@ -19,8 +21,19 @@ const std::string kLumiaUsage = "lumia client.\n"
                                  "Usage:\n"
                                  "    lumia report -i <minion ip>\n"
                                  "    lumia show -i <minion ip>\n"
+                                 "    lumia import -d <minion dict path> -s <scripts dir>\n"
+                                 "    lumia enter safemode\n"
+                                 "    lumia leave safemode\n"
                                  "Options:\n"
-                                 "    -i ip    Report dead minion with specify ip address\n";
+                                 "    -i ip          Report dead minion using ip address\n"
+                                 "    -d path        Import minion dict from file path\n"
+                                 "    -s script dir  Import system scripts from dir\n"
+                                 "Subcommand:\n"
+                                 "    report         Report dead minion to lumia\n"
+                                 "    show           Query the information of minion with ip\n"
+                                 "    import         Import dict and script that lumia needs\n"
+                                 "    enter safemode Enter safemode that lumia will suspend it'self \n"
+                                 "    leave safemode Leave safemode that lumia will enter work mode\n";
 
 bool GetLumiaAddr(std::string* lumia_addr) {
     if (lumia_addr == NULL) {
@@ -31,6 +44,19 @@ bool GetLumiaAddr(std::string* lumia_addr) {
     std::string path_key = FLAGS_lumia_root_path + FLAGS_lumia_main;
     bool ok = nexus.Get(path_key, lumia_addr, &err);
     return ok;
+}
+
+int ImportData() {
+    std::string lumia_addr;
+    bool ok = GetLumiaAddr(&lumia_addr);
+    if (!ok) {
+        fprintf(stderr, "fail to get lumia addr");
+        return -1;
+    }
+    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
+    ok = lumia->ImportData(FLAGS_d, FLAGS_s);
+    fprintf(stdout, "import data successfully");
+    return 0;
 }
 
 int ReportDeadMinion() {
@@ -113,6 +139,8 @@ int main(int argc, char* argv[]) {
         return ReportDeadMinion();
     } else if (strcmp(argv[1], "show") == 0) {
         return ShowMinion();
+    } else if (strcmp(argv[1], "import") == 0){
+        return ImportData();
     } else {
         fprintf(stderr, "%s", kLumiaUsage.c_str());
         return -1;

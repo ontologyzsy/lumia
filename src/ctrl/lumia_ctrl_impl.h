@@ -52,8 +52,6 @@ public:
     LumiaCtrlImpl();
     ~LumiaCtrlImpl();
     void Init();
-    bool LoadMinion(const std::string& path);
-    bool LoadScripts(const std::string& folder);
     // galaxy log checker report dead agent
     void ReportDeadMinion(::google::protobuf::RpcController* controller,
                           const ::baidu::lumia::ReportDeadMinionRequest* request,
@@ -64,7 +62,11 @@ public:
                    const ::baidu::lumia::GetMinionRequest* request,
                    ::baidu::lumia::GetMinionResponse* response,
                    ::google::protobuf::Closure* done);
- 
+
+    void ImportData(::google::protobuf::RpcController* controller,
+                    const ::baidu::lumia::ImportDataRequest* request,
+                    ::baidu::lumia::ImportDataResponse* response,
+                    ::google::protobuf::Closure* done);
     void OnSessionTimeout();
 
     void OnLockChange(const std::string& sessionid);

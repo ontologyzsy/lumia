@@ -48,17 +48,19 @@ lumia_ctrl_src = 'src/ctrl/lumia_ctrl_main.cc\
                 src/proto/lumia.proto\
                 src/flags.cc\
                 src/ctrl/minion_ctrl.cc\
-                src/ctrl/http_client.cc'
+                src/ctrl/http_client.cc\
+                src/ctrl/lumia_ctrl_util.cc'
 
 lumia_sdk_src = 'src/sdk/lumia.cc\
                  src/proto/lumia.proto'
 
 lumia_client_src = 'src/client/lumia_client.cc\
                     src/sdk/lumia.cc\
-                    src/proto/lumia.proto'
+                    src/proto/lumia.proto\
+                    src/flags.cc'
 
 lumia_headers = 'src/sdk/lumia.h'
 StaticLibrary('lumia',Sources(lumia_sdk_src),HeaderFiles(lumia_headers))
-Application('lumia_server',Sources(lumia_ctrl_src))
+Application('lumia_ctrl',Sources(lumia_ctrl_src))
 Application('lumia',Sources(lumia_client_src))
 

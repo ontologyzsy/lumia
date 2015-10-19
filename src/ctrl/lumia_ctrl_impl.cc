@@ -20,6 +20,8 @@ DECLARE_string(nexus_servers);
 DECLARE_string(lumia_lock);
 DECLARE_string(lumia_ctrl_port);
 DECLARE_string(lumia_main);
+DECLARE_string(lumia_minion);
+DECLARE_string(lumia_script);
 DECLARE_string(minion_dict);
 DECLARE_string(scripts_dir);
 DECLARE_string(lumia_root_path);
@@ -62,15 +64,7 @@ LumiaCtrlImpl::~LumiaCtrlImpl() {
 }
 
 void LumiaCtrlImpl::Init() {
-    AcquireLumiaLock();
-    bool ok = LoadMinion(FLAGS_minion_dict);
-    if (!ok) {
-        LOG(FATAL, "fail to load minion dict");
-    }
-    ok = LoadScripts(FLAGS_scripts_dir);
-    if (!ok) {
-        LOG(FATAL, "fail to load scripts");
-    } 
+    AcquireLumiaLock(); 
 }
 void LumiaCtrlImpl::OnSessionTimeout() {
     LOG(WARNING, "time out with nexus");
@@ -92,6 +86,96 @@ void LumiaCtrlImpl::AcquireLumiaLock() {
     LOG(INFO, "master lock [ok].  %s -> %s", 
         lumia_key.c_str(), lumia_endpoint.c_str());
 
+    std::string minion_start_key = FLAGS_lumia_root_path + FLAGS_lumia_minion +"/0";
+    std::string minion_end_key = FLAGS_lumia_root_path + FLAGS_lumia_minion +"/~~~~~~~~~";
+    // TODO delete minions
+    ::galaxy::ins::sdk::ScanResult* minions = nexus_->Scan(minion_start_key, minion_end_key);
+    if (minions->Error() != ::galaxy::ins::sdk::kOK) {
+        LOG(FATAL, "fail to load minions from nexus");
+    }
+    while (!minions->Done()) {
+        Minion* m = new Minion();
+        ret = m->ParseFromString(minions->Value());
+        if (!ret) {
+            LOG(WARNING, "fail to parse %s", minions->Key().c_str());
+            minions->Next();
+        }
+        MinionIndex m_index(m->id(), m->hostname(), m->ip(), m);
+        minion_set_.insert(m_index);
+        LOG(INFO, "load minion %s", m->hostname().c_str());
+        minions->Next();
+    }
+    std::string script_start_key = FLAGS_lumia_root_path + FLAGS_lumia_script  + "/";
+    std::string script_end_key = FLAGS_lumia_root_path + FLAGS_lumia_script + "/~~~~~~~~~";
+    ::galaxy::ins::sdk::ScanResult* scripts = nexus_->Scan(script_start_key, script_end_key);
+    if (scripts->Error() != ::galaxy::ins::sdk::kOK) {
+        LOG(FATAL, "fail to load scripts from nexus");
+    }
+    while (!scripts->Done()) {
+        SystemScript script;
+        script.ParseFromString(scripts->Value());
+        scripts_[script.name()] = script.content();
+        LOG(INFO, "load script %s", script.name().c_str());
+        scripts->Next();
+    }
+
+}
+
+void LumiaCtrlImpl::ImportData(::google::protobuf::RpcController* controller,
+                    const ::baidu::lumia::ImportDataRequest* request,
+                    ::baidu::lumia::ImportDataResponse* response,
+                    ::google::protobuf::Closure* done) {
+    MutexLock lock(&mutex_);
+    ::galaxy::ins::sdk::SDKError err;
+    const minion_set_id_index_t& index = boost::multi_index::get<id_tag>(minion_set_);
+    for (int i = 0; i < request->minions().minions_size(); i++) {
+        const Minion& minion = request->minions().minions(i);
+        std::string minion_value;
+        bool ok = minion.SerializeToString(&minion_value);
+        if (!ok) {
+           LOG(WARNING, "fail to serialize minion %s to string", minion.hostname().c_str());
+           continue;
+        }
+        std::string minion_key = FLAGS_lumia_root_path + FLAGS_lumia_minion + "/" + minion.id();
+        ok = nexus_->Put(minion_key, minion_value, &err);
+        if (!ok || err != ::galaxy::ins::sdk::kOK) {
+           LOG(WARNING, "fail to put minion to nexus %s", minion.hostname().c_str());
+           continue;
+        }
+        minion_set_id_index_t::const_iterator it = index.find(minion.id());
+        if (it == index.end()) {
+            Minion* m = new Minion();
+            m->CopyFrom(minion);
+            m->set_state(kMinionAlive);
+            MinionIndex m_index(m->id(), m->hostname(), m->ip(), m);
+            minion_set_.insert(m_index);
+            LOG(INFO, "insert new minion %s", m->hostname().c_str());
+        }else {
+            MinionState state = it->minion_->state();
+            it->minion_->CopyFrom(minion);
+            it->minion_->set_state(state);
+            LOG(INFO, "update minion %s", minion.hostname().c_str());
+        }
+    }
+
+    for (int i = 0; i < request->scripts_size(); i++) {
+        LOG(INFO, "load script with name %s", request->scripts(i).name().c_str());
+        std::string script_key = FLAGS_lumia_root_path + FLAGS_lumia_script + "/" + request->scripts(i).name();
+        std::string script_value;
+        bool ok = request->scripts(i).SerializeToString(&script_value);
+        if (!ok) {
+            LOG(WARNING, "fail to serialize script %s", script_key.c_str());
+            continue;
+        }
+        ok = nexus_->Put(script_key, script_value, &err);
+        if (!ok || err != ::galaxy::ins::sdk::kOK ) {
+           LOG(WARNING, "fail to save script %s to nexus", request->scripts(i).name().c_str());
+           continue;
+        }
+        scripts_[request->scripts(i).name()] = request->scripts(i).content();
+    }
+    response->set_status(kLumiaOk);
+    done->Run();
 }
 
 void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controller,
@@ -289,60 +373,6 @@ void LumiaCtrlImpl::RebootCallBack(const std::string sessionid,
         workers_.DelayTask(10000, boost::bind(&LumiaCtrlImpl::HandleInitAgent, this, hosts_ok));
     }
 
-}
-
-bool LumiaCtrlImpl::LoadMinion(const std::string& path) {
-    MutexLock lock(&mutex_);
-    LOG(INFO, "load minion dict %s", path.c_str());
-    std::ifstream ip_minions_is;
-    ip_minions_is.open(path.c_str(), std::ifstream::binary);
-    char buffer[1024];
-    std::stringstream ss;
-    while(ip_minions_is.good()) {
-        ip_minions_is.read(buffer, 1024);
-        int32_t read_count = ip_minions_is.gcount();
-        ss.write(buffer, read_count);
-    }
-    LumiaMinions minions;
-    minions.ParseFromString(ss.str());
-    for (int i = 0; i < minions.minions_size(); i++) {
-        Minion* m = new Minion();
-        m->CopyFrom(minions.minions(i));
-        m->set_state(kMinionAlive);
-        MinionIndex m_index(m->id(), m->hostname(), m->ip(), m);
-        minion_set_.insert(m_index);
-    }
-    LOG(INFO, "load %d minions", minions.minions_size());
-    return true;
-}
-
-bool LumiaCtrlImpl::LoadScripts(const std::string& folder) {
-    LOG(INFO, "load scripts from %s", folder.c_str());
-    DIR *dir = opendir(folder.c_str());
-    if (dir == NULL) {
-        LOG(WARNING, "fail to open folder %s", folder.c_str());
-        return false;
-    }
-    struct dirent *dirp;
-    char buffer[1024];
-    while ((dirp = readdir(dir)) != NULL) {
-        std::string filename(dirp->d_name);
-        if (filename.compare(".") == 0 || filename.compare("..") == 0) {
-            continue;
-        }
-        LOG(INFO, "load file %s", dirp->d_name);
-        std::string full_path = folder + "/" + filename;
-        std::ifstream script;
-        script.open(full_path.c_str(), std::ifstream::in);
-        std::stringstream ss;
-        while (script.good()) {
-            script.read(buffer, 1024);
-            int32_t count = script.gcount();
-            ss.write(buffer, count);
-        }
-        scripts_.insert(std::make_pair(filename, ss.str()));
-    }
-    return true;
 }
 
 void LumiaCtrlImpl::GetMinion(::google::protobuf::RpcController* /*controller*/,
