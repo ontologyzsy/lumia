@@ -1,3 +1,5 @@
+import "agent.proto";
+
 package baidu.lumia;
 
 option cc_generic_services = true;
@@ -50,6 +52,7 @@ message Minion {
     optional int32 bandwidth = 10;
 
     optional string datacenter = 11;
+    optional MinionStatus status = 12;
 }
 
 message ReportDeadMinionRequest {
@@ -89,8 +92,19 @@ message ImportDataResponse {
     optional LumiaStatus status = 1;
 }
 
+message PingRequest {
+    optional string node_addr = 1;
+}
+
+message PingResponse {
+    optional LumiaStatus status = 1;
+}
+
 service LumiaCtrl {
     rpc ReportDeadMinion(ReportDeadMinionRequest) returns (ReportDeadMinionResponse);
     rpc GetMinion(GetMinionRequest) returns (GetMinionResponse);
     rpc ImportData(ImportDataRequest) returns (ImportDataResponse);
+    rpc Ping(PingRequest) returns (PingResponse);
 }
+
+

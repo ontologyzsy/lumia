@@ -9,6 +9,7 @@
 #include "thread_pool.h"
 #include "ins_sdk.h"
 #include "ctrl/minion_ctrl.h"
+#include "rpc/rpc_client.h"
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
@@ -67,6 +68,12 @@ public:
                     const ::baidu::lumia::ImportDataRequest* request,
                     ::baidu::lumia::ImportDataResponse* response,
                     ::google::protobuf::Closure* done);
+    void Ping(::google::protobuf::RpcController* controller,
+              const ::baidu::lumia::PingRequest* request,
+              ::baidu::lumia::PingResponse* response,
+              ::google::protobuf::Closure* done);
+
+
     void OnSessionTimeout();
 
     void OnLockChange(const std::string& sessionid);
@@ -89,10 +96,22 @@ private:
 
     void AcquireLumiaLock();
 
+    void HandleNodeOffline(const std::string& node_addr);
+
+    void ScheduleNextQuery();
+    void LaunchQuery();
+    void QueryNode(const std::string& node_addr);
+    void QueryCallBack(const QueryAgentRequest* request,
+                       QueryAgentResponse* response,
+                       bool fails,
+                       int error,
+                       const std::string& node_addr);
 private:
     MinionSet minion_set_;
     ::baidu::common::Mutex mutex_;
+    ::baidu::common::Mutex timer_mutex_;
     ::baidu::common::ThreadPool workers_;
+    ::baidu::common::ThreadPool dead_checkers_;
     MinionCtrl* minion_ctrl_;
 
     // system check script config
@@ -102,6 +121,14 @@ private:
     std::set<std::string> under_process_;
 
     InsSDK* nexus_;
+
+    // 
+    std::set<std::string> nodes_;
+    std::map<std::string, int64_t>  node_timers_;
+
+    // 
+    int64_t query_node_count_;
+    ::baidu::galaxy::RpcClient* rpc_client_;
 };
 
 }

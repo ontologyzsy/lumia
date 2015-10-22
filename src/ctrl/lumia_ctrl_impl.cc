@@ -4,12 +4,14 @@
 #include "ctrl/lumia_ctrl_impl.h"
 
 #include "ctrl/lumia_ctrl_util.h"
+#include "proto/agent.pb.h"
 #include <boost/algorithm/string/join.hpp>
 #include <boost/lexical_cast.hpp>
 #include <unistd.h>
 #include <gflags/gflags.h>
 #include <boost/function.hpp>
 #include <boost/bind.hpp>
+#include <boost/scoped_ptr.hpp>
 #include "logging.h"
 #include <fstream>
 #include <sstream>
@@ -48,6 +50,8 @@ LumiaCtrlImpl::LumiaCtrlImpl():workers_(4){
     minion_ctrl_ = new MinionCtrl(FLAGS_ccs_api_http_host,
                                   FLAGS_rms_api_http_host);
     nexus_ = new ::galaxy::ins::sdk::InsSDK(FLAGS_nexus_servers);
+    rpc_client_ = new ::baidu::galaxy::RpcClient();
+    query_node_count_ = 0;
 }
 
 void LumiaCtrlImpl::OnLockChange(const std::string& sessionid) {
@@ -119,7 +123,62 @@ void LumiaCtrlImpl::AcquireLumiaLock() {
         LOG(INFO, "load script %s", script.name().c_str());
         scripts->Next();
     }
+    ScheduleNextQuery();
 
+}
+
+void LumiaCtrlImpl::ScheduleNextQuery() {
+    workers_.DelayTask(10000, boost::bind(&LumiaCtrlImpl::LaunchQuery, this));
+}
+
+void LumiaCtrlImpl::LaunchQuery() {
+    MutexLock lock(&mutex_);
+    if (query_node_count_ != 0) {
+        LOG(FATAL, "invalide query node count number %s", query_node_count_);
+        return;
+    }
+    std::set<std::string>::iterator it = nodes_.begin();
+    for (; it != nodes_.end(); ++it) {
+        QueryNode(*it);
+    }
+}
+
+void LumiaCtrlImpl::QueryNode(const std::string& node_addr) {
+    LOG(INFO, "start a query on node %s", node_addr.c_str());
+    QueryAgentRequest* request = new QueryAgentRequest();
+    QueryAgentResponse* response = new QueryAgentResponse();
+    LumiaAgent_Stub* agent = NULL;
+    rpc_client_->GetStub(node_addr, &agent);
+    boost::function<void (const QueryAgentRequest*, QueryAgentResponse*, bool, int)> query_callback; 
+    query_callback = boost::bind(&LumiaCtrlImpl::QueryCallBack, this, _1, _2, _3, _4, node_addr);
+    rpc_client_->AsyncRequest(agent, &LumiaAgent_Stub::Query,
+                              request, response, query_callback, 5, 0);
+    query_node_count_++;
+    delete agent;
+}
+
+void LumiaCtrlImpl::QueryCallBack(const QueryAgentRequest* request,
+                                  QueryAgentResponse* response,
+                                  bool fails, int error, 
+                                  const std::string& node_addr) {
+    boost::scoped_ptr<const QueryAgentRequest> request_ptr(request);
+    boost::scoped_ptr<QueryAgentResponse> response_ptr(response);
+    if (fails || response->status() != 0) {
+        LOG(WARNING, "fail to query node %s", node_addr.c_str());
+        return;
+    }
+    MutexLock lock(&mutex_);
+    const minion_set_ip_index_t& ip_index = boost::multi_index::get<ip_tag>(minion_set_);
+    minion_set_ip_index_t::const_iterator it = ip_index.find(response->ip());
+    if (it == ip_index.end()) {
+        LOG(WARNING, "host %s meta does not in lumia", response->ip().c_str());
+        return;
+    }
+    it->minion_->mutable_status()->CopyFrom(response->minion_status());
+    LOG(INFO, "update minion %s status successfully", response->ip().c_str());
+    if (--query_node_count_ == 0) {
+        ScheduleNextQuery();
+    }
 }
 
 void LumiaCtrlImpl::ImportData(::google::protobuf::RpcController* controller,
@@ -177,6 +236,34 @@ void LumiaCtrlImpl::ImportData(::google::protobuf::RpcController* controller,
     }
     response->set_status(kLumiaOk);
     done->Run();
+}
+
+void LumiaCtrlImpl::Ping(::google::protobuf::RpcController* controller,
+                         const ::baidu::lumia::PingRequest* request,
+                         ::baidu::lumia::PingResponse* response,
+                         ::google::protobuf::Closure* done) {
+    {
+        MutexLock lock(&mutex_);
+        nodes_.insert(request->node_addr());
+    }
+    MutexLock lock(&timer_mutex_);
+    std::map<std::string, int64_t>::iterator it = node_timers_.find(request->node_addr());
+    if (it != node_timers_.end()) {
+        bool ok = dead_checkers_.CancelTask(it->second);
+        if (!ok) {
+            LOG(WARNING, "node %s lost", request->node_addr().c_str());
+        }
+    }else {
+        LOG(INFO, "new node %s join", request->node_addr().c_str());
+    }
+    int64_t id = dead_checkers_.DelayTask(100000, boost::bind(&LumiaCtrlImpl::HandleNodeOffline, this, request->node_addr()));
+    node_timers_[request->node_addr()] = id;
+    done->Run();
+}
+
+void LumiaCtrlImpl::HandleNodeOffline(const std::string& node_addr) {
+    MutexLock lock(&mutex_);
+    nodes_.erase(node_addr);
 }
 
 void LumiaCtrlImpl::ReportDeadMinion(::google::protobuf::RpcController* controller,
@@ -409,6 +496,7 @@ void LumiaCtrlImpl::GetMinion(::google::protobuf::RpcController* /*controller*/,
     done->Run();
 
 }
+
 
 }
 }

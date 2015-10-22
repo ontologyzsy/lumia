@@ -25,7 +25,7 @@ CXXFLAGS('-g -pipe -W -Wall -fPIC')
 PROTOC('../../../third-64/protobuf/bin/protoc')
 
 #头文件路径.
-INCPATHS('. ./src ./output/include ./common/include ./ins/sdk/')
+INCPATHS('. ./src ./src/proto ./output/include ./common/include ./ins/sdk/')
 
 #使用库
 LIBS('./common/libcommon.a ./ins/libins_sdk.a')
@@ -46,21 +46,31 @@ CONFIGS('public/noah/giano-lib/release/baas-lib-c@ci-base')
 lumia_ctrl_src = 'src/ctrl/lumia_ctrl_main.cc\
                 src/ctrl/lumia_ctrl_impl.cc\
                 src/proto/lumia.proto\
+                src/proto/agent.proto\
                 src/flags.cc\
                 src/ctrl/minion_ctrl.cc\
                 src/ctrl/http_client.cc\
                 src/ctrl/lumia_ctrl_util.cc'
 
 lumia_sdk_src = 'src/sdk/lumia.cc\
-                 src/proto/lumia.proto'
+                 src/proto/lumia.proto\
+                 src/proto/agent.proto'
 
 lumia_client_src = 'src/client/lumia_client.cc\
                     src/sdk/lumia.cc\
                     src/proto/lumia.proto\
+                    src/proto/agent.proto\
                     src/flags.cc'
+
+lumia_agent_src = 'src/agent/lumia_agent.cc\
+                  src/agent/lumia_agent_main.cc\
+                  src/flags.cc\
+                  src/proto/agent.proto\
+                  src/proto/lumia.proto'
 
 lumia_headers = 'src/sdk/lumia.h'
 StaticLibrary('lumia',Sources(lumia_sdk_src),HeaderFiles(lumia_headers))
 Application('lumia_ctrl',Sources(lumia_ctrl_src))
 Application('lumia',Sources(lumia_client_src))
+Application('lumia_agent',Sources(lumia_agent_src))
 

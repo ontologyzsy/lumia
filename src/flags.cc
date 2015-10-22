@@ -25,3 +25,7 @@ DEFINE_string(lumia_lock, "/lock", "root path of lumia lock on nexus, e.g /lock"
 DEFINE_string(lumia_main, "/main", "the path of lumia main ");
 DEFINE_string(lumia_minion, "/minion", "the path of lumia minion ");
 DEFINE_string(lumia_script, "/script", "the path of lumia script ");
+
+DEFINE_string(lumia_agent_smartctl_bin_path, "./bin/smartctl", "the path of smartctl path");
+DEFINE_string(lumia_agent_port, "8123", "the port of lumia agent");
+DEFINE_string(lumia_agent_ip, "127.0.0.1", "the ip of lumia agent");
