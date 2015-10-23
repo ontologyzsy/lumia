@@ -104,7 +104,7 @@ void LumiaCtrlImpl::AcquireLumiaLock() {
         if (!ret) {
             LOG(WARNING, "fail to parse %s", minions->Key().c_str());
             minions->Next();
-        }
+        } 
         MinionIndex m_index(m->id(), m->hostname(), m->ip(), m);
         minion_set_.insert(m_index);
         LOG(INFO, "load minion %s", m->hostname().c_str());
@@ -125,6 +125,44 @@ void LumiaCtrlImpl::AcquireLumiaLock() {
     }
     ScheduleNextQuery();
 
+}
+
+void LumiaCtrlImpl::GetOverview(::google::protobuf::RpcController* controller,
+                    const ::baidu::lumia::GetOverviewRequest* request,
+                    ::baidu::lumia::GetOverviewResponse* response,
+                    ::google::protobuf::Closure* done) {
+    MutexLock lock(&mutex_);
+    const minion_set_id_index_t& id_index = boost::multi_index::get<id_tag>(minion_set_);
+    minion_set_id_index_t::const_iterator it = id_index.begin();
+    for (; it != id_index.end(); ++it) {
+        const MinionStatus& status = it->minion_->status();
+        if (status.devices_size() <= 0) {
+            continue;
+        }
+        MinionOverview* view = response->add_minions();
+        view->set_hostname(it->minion_->hostname());
+        view->set_ip(it->minion_->ip());
+        bool mount_ok = true;
+        bool device_ok = true;
+        for (int i = 0; i < status.devices_size(); i++) {
+            if (status.devices(i).healthy()) {
+                continue;
+            }
+            device_ok = false;
+            break;
+        }
+        for (int i = 0;  i < status.devices_size(); i++) {
+            if (status.mounts(i).mounted()) {
+                continue;
+            }
+            mount_ok = false;
+            break;
+        }
+        view->set_mount_ok(mount_ok);
+        view->set_device_ok(device_ok);
+        view->set_datetime(status.datetime());
+    }
+    done->Run();
 }
 
 void LumiaCtrlImpl::ScheduleNextQuery() {
@@ -262,9 +300,6 @@ void LumiaCtrlImpl::Ping(::google::protobuf::RpcController* controller,
     int64_t id = dead_checkers_.DelayTask(10000, boost::bind(&LumiaCtrlImpl::HandleNodeOffline, this, request->node_addr()));
     node_timers_[request->node_addr()] = id;
     done->Run();
-    if (query_node_count_ == 0){
-        ScheduleNextQuery();
-    }
 }
 
 void LumiaCtrlImpl::HandleNodeOffline(const std::string& node_addr) {

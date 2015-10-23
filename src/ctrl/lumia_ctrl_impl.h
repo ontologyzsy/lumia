@@ -72,6 +72,11 @@ public:
               const ::baidu::lumia::PingRequest* request,
               ::baidu::lumia::PingResponse* response,
               ::google::protobuf::Closure* done);
+    void GetOverview(::google::protobuf::RpcController* controller,
+                    const ::baidu::lumia::GetOverviewRequest* request,
+                    ::baidu::lumia::GetOverviewResponse* response,
+                    ::google::protobuf::Closure* done);
+
 
     void OnSessionTimeout();
 

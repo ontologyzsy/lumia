@@ -100,11 +100,25 @@ message PingResponse {
     optional LumiaStatus status = 1;
 }
 
+message MinionOverview {
+    optional string hostname = 1;
+    optional string ip = 2;
+    optional bool mount_ok = 3;
+    optional bool device_ok = 4;
+    optional int64 datetime = 5;
+}
+
+message GetOverviewRequest {}
+message GetOverviewResponse {
+    repeated MinionOverview minions = 1;
+}
+
 service LumiaCtrl {
     rpc ReportDeadMinion(ReportDeadMinionRequest) returns (ReportDeadMinionResponse);
     rpc GetMinion(GetMinionRequest) returns (GetMinionResponse);
     rpc ImportData(ImportDataRequest) returns (ImportDataResponse);
     rpc Ping(PingRequest) returns (PingResponse);
+    rpc GetOverview(GetOverviewRequest) returns (GetOverviewResponse); 
 }
 
 
