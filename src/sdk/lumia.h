@@ -39,7 +39,9 @@ struct MinionDesc {
     DiskDesc flash;
 
     int32_t bandwidth;
-    std::string datacenter; 
+    std::string datacenter;
+    bool mount_ok;
+    bool device_ok;
 };
 
 class LumiaSdk {

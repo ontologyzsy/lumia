@@ -128,13 +128,13 @@ void LumiaCtrlImpl::AcquireLumiaLock() {
 }
 
 void LumiaCtrlImpl::ScheduleNextQuery() {
-    workers_.DelayTask(10000, boost::bind(&LumiaCtrlImpl::LaunchQuery, this));
+    workers_.DelayTask(30000, boost::bind(&LumiaCtrlImpl::LaunchQuery, this));
 }
 
 void LumiaCtrlImpl::LaunchQuery() {
     MutexLock lock(&mutex_);
     if (query_node_count_ != 0) {
-        LOG(FATAL, "invalide query node count number %s", query_node_count_);
+        LOG(WARNING, "invalide query node count number %d", query_node_count_);
         return;
     }
     std::set<std::string>::iterator it = nodes_.begin();
@@ -144,6 +144,7 @@ void LumiaCtrlImpl::LaunchQuery() {
 }
 
 void LumiaCtrlImpl::QueryNode(const std::string& node_addr) {
+    mutex_.AssertHeld();
     LOG(INFO, "start a query on node %s", node_addr.c_str());
     QueryAgentRequest* request = new QueryAgentRequest();
     QueryAgentResponse* response = new QueryAgentResponse();
@@ -163,11 +164,15 @@ void LumiaCtrlImpl::QueryCallBack(const QueryAgentRequest* request,
                                   const std::string& node_addr) {
     boost::scoped_ptr<const QueryAgentRequest> request_ptr(request);
     boost::scoped_ptr<QueryAgentResponse> response_ptr(response);
+   
+    MutexLock lock(&mutex_);
+    if (--query_node_count_ == 0) {
+        ScheduleNextQuery();
+    }
     if (fails || response->status() != 0) {
         LOG(WARNING, "fail to query node %s", node_addr.c_str());
         return;
     }
-    MutexLock lock(&mutex_);
     const minion_set_ip_index_t& ip_index = boost::multi_index::get<ip_tag>(minion_set_);
     minion_set_ip_index_t::const_iterator it = ip_index.find(response->ip());
     if (it == ip_index.end()) {
@@ -175,10 +180,8 @@ void LumiaCtrlImpl::QueryCallBack(const QueryAgentRequest* request,
         return;
     }
     it->minion_->mutable_status()->CopyFrom(response->minion_status());
-    LOG(INFO, "update minion %s status successfully", response->ip().c_str());
-    if (--query_node_count_ == 0) {
-        ScheduleNextQuery();
-    }
+    LOG(INFO, "update minion %s status successfully statu %d", response->ip().c_str(),
+       response->minion_status().all_is_well());
 }
 
 void LumiaCtrlImpl::ImportData(::google::protobuf::RpcController* controller,
@@ -251,14 +254,17 @@ void LumiaCtrlImpl::Ping(::google::protobuf::RpcController* controller,
     if (it != node_timers_.end()) {
         bool ok = dead_checkers_.CancelTask(it->second);
         if (!ok) {
-            LOG(WARNING, "node %s lost", request->node_addr().c_str());
+            LOG(WARNING, "some stranges happend to %s ", request->node_addr().c_str());
         }
     }else {
         LOG(INFO, "new node %s join", request->node_addr().c_str());
     }
-    int64_t id = dead_checkers_.DelayTask(100000, boost::bind(&LumiaCtrlImpl::HandleNodeOffline, this, request->node_addr()));
+    int64_t id = dead_checkers_.DelayTask(10000, boost::bind(&LumiaCtrlImpl::HandleNodeOffline, this, request->node_addr()));
     node_timers_[request->node_addr()] = id;
     done->Run();
+    if (query_node_count_ == 0){
+        ScheduleNextQuery();
+    }
 }
 
 void LumiaCtrlImpl::HandleNodeOffline(const std::string& node_addr) {

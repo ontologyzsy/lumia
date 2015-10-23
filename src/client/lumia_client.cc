@@ -101,8 +101,8 @@ int ShowMinion() {
         fprintf(stderr, "fail to get minions \n");
         return -1;
     }
-    baidu::common::TPrinter tp(11);
-    tp.AddRow(11, "", "id", "ip", "hostname", "cpu", "mem", "disk", "flash", "state", "rock ip", "datacenter");
+    baidu::common::TPrinter tp(12);
+    tp.AddRow(12, "", "id", "ip", "hostname", "cpu", "mem", "disk", "flash", "state", "rock ip", "datacenter", "healthy");
     for (uint32_t i = 0; i < minions.size(); i++) {
         std::vector<std::string> vs;
         vs.push_back(baidu::common::NumToString(i + 1));
@@ -121,6 +121,7 @@ int ShowMinion() {
         vs.push_back(minions[i].state);
         vs.push_back(minions[i].rock_ip);
         vs.push_back(minions[i].datacenter);
+        vs.push_back("mount:" + baidu::common::NumToString(minions[i].mount_ok) +",device:"+baidu::common::NumToString(minions[i].device_ok));
         tp.AddRow(vs);
     }
     printf("%s\n", tp.ToString().c_str());

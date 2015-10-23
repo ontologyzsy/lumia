@@ -90,6 +90,25 @@ bool LumiaSdkImpl::GetMinion(const std::vector<std::string>& ips,
 
         minion.flash.size = response.minions(i).flash().size();
         minion.flash.count = response.minions(i).flash().count();
+        bool mount_ok = true;
+        bool device_ok = true;
+        const MinionStatus& pb_minion = response.minions(i).status();
+        for (int i = 0; i < pb_minion.devices_size(); i++) {
+            if (pb_minion.devices(i).healthy()) {
+                continue;
+            }
+            device_ok = false;
+            break;
+        }
+        for (int i = 0;  i < pb_minion.devices_size(); i++) {
+            if (pb_minion.mounts(i).mounted()) {
+                continue;
+            }
+            mount_ok = false;
+            break;
+        }
+        minion.mount_ok = mount_ok;
+        minion.device_ok = device_ok;
         minions->push_back(minion);
     }
     return true;

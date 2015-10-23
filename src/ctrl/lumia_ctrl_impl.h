@@ -73,7 +73,6 @@ public:
               ::baidu::lumia::PingResponse* response,
               ::google::protobuf::Closure* done);
 
-
     void OnSessionTimeout();
 
     void OnLockChange(const std::string& sessionid);

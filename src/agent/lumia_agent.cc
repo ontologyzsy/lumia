@@ -231,6 +231,7 @@ bool LumiaAgentImpl::CheckMounts(bool* all_mounted, MinionStatus& status) {
     MountContainer mtab;
     ParseTab(mss.str(), mtab);
     MountContainer::iterator it = fstab.begin();
+    *all_mounted = true;
     for (; it !=  fstab.end(); ++it) {
         MountStatus* m_status = status.add_mounts();
         m_status->set_mounted(true);
@@ -239,10 +240,10 @@ bool LumiaAgentImpl::CheckMounts(bool* all_mounted, MinionStatus& status) {
         if (mtab.find(it->first) == mtab.end()) {
             *all_mounted = false;
             m_status->set_mounted(false);
+            LOG(WARNING, "device %s umounted", it->first.c_str());
         }
         LOG(INFO, "device %s mouted to %s", it->first.c_str(), it->second.mount_point.c_str());
     }
-    *all_mounted = true;
     return true;
 }
 
@@ -260,6 +261,7 @@ bool LumiaAgentImpl::ParseTab(const std::string& content,
             LOG(INFO, "invalide mount point %s", lines[i].c_str());
             return false;
         }
+        LOG(INFO, "%s", lines[i].c_str());
         MountInfo info;
         info.device = parts[0];
         info.mount_point = parts[1];
@@ -269,8 +271,8 @@ bool LumiaAgentImpl::ParseTab(const std::string& content,
     return true;
 }
 
-void LumiaAgentImpl::Query(::google::protobuf::RpcController* controller,
-                           const ::baidu::lumia::QueryAgentRequest* request,
+void LumiaAgentImpl::Query(::google::protobuf::RpcController* /*controller*/,
+                           const ::baidu::lumia::QueryAgentRequest* /*request*/,
                            ::baidu::lumia::QueryAgentResponse* response,
                            ::google::protobuf::Closure* done) {
     MutexLock lock(&mutex_);
