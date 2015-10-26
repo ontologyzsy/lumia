@@ -203,12 +203,17 @@ bool LumiaAgentImpl::CheckDevice(const std::string& devices, bool* ok) {
     std::stringstream ss;
     int exit_code = -1;
     bool ret = SyncExec(cmd, ss, &exit_code);
+    LOG(INFO, "check device %s output %s with exit code %d", 
+         devices.c_str(),
+         ss.str().c_str(),
+         exit_code);
     if (ret) {
-        *ok = false;
         // self check passed
-        std::size_t index = ss.str().find_first_of("PASSED");
+        std::size_t index = ss.str().find("PASSED");
         if (exit_code == 0 && index != std::string::npos) {
             *ok = true;
+        }else {
+            *ok = false;
         }
         return true;
     }

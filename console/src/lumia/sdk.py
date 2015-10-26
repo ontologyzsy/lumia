@@ -38,4 +38,16 @@ class LumiaSDK(object):
             LOG.exception("fail to call list node")
         return []
 
-    
+    def show_minion(self, ips = []):
+        if not ips:
+            return []
+        lumia_ctrl = lumia_pb2.LumiaCtrl_Stub(self.channel)
+        controller = client.Controller()
+        controller.SetTimeout(2.5)
+        request = lumia_pb2.GetMinionRequest(ips = ips)
+        try:
+            response = lumia_ctrl.GetMinion(controller, request)
+            return response.minions
+        except:
+            LOG.exception("fail to call list node")
+        return []

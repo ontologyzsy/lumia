@@ -152,11 +152,11 @@ void LumiaCtrlImpl::GetOverview(::google::protobuf::RpcController* controller,
             device_ok = false;
             break;
         }
-        for (int i = 0;  i < status.devices_size(); i++) {
+        for (int i = 0;  i < status.mounts_size(); i++) {
             if (status.mounts(i).mounted()) {
                 continue;
             }
-            if (status.mounts(i).mount_point().find_first_of("/noah") == std::string::npos) {
+            if (status.mounts(i).mount_point().find("/noah") != std::string::npos) {
                 continue;
             }
             mount_ok = false;
