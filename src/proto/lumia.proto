@@ -80,7 +80,7 @@ message GetMinionResponse {
 
 message SystemScript {
     optional string name = 1;
-    optional string content = 2;
+    optional bytes content = 2;
 }
 
 message ImportDataRequest {

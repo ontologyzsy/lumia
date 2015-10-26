@@ -205,7 +205,9 @@ bool LumiaAgentImpl::CheckDevice(const std::string& devices, bool* ok) {
     bool ret = SyncExec(cmd, ss, &exit_code);
     if (ret) {
         *ok = false;
-        if (exit_code == 0) {
+        // self check passed
+        std::size_t index = ss.str().find_first_of("PASSED");
+        if (exit_code == 0 && index != std::string::npos) {
             *ok = true;
         }
         return true;
@@ -241,8 +243,9 @@ bool LumiaAgentImpl::CheckMounts(bool* all_mounted, MinionStatus& status) {
             *all_mounted = false;
             m_status->set_mounted(false);
             LOG(WARNING, "device %s umounted", it->first.c_str());
+            continue;
         }
-        LOG(INFO, "device %s mouted to %s", it->first.c_str(), it->second.mount_point.c_str());
+        LOG(INFO, "device %s mounted to %s", it->first.c_str(), it->second.mount_point.c_str());
     }
     return true;
 }
@@ -264,8 +267,16 @@ bool LumiaAgentImpl::ParseTab(const std::string& content,
         LOG(INFO, "%s", lines[i].c_str());
         MountInfo info;
         info.device = parts[0];
-        info.mount_point = parts[1];
-        info.type = parts[2];
+        for (size_t j = 1; j < parts.size(); j++) {
+            if (parts[j].empty()) {
+                continue;
+            }
+            info.mount_point = parts[j];
+            if ((j + 1) < parts.size()) {
+                info.type = parts[j+1];
+            }
+            break;
+        }
         container.insert(std::make_pair(info.device, info));
     }
     return true;

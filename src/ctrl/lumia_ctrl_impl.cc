@@ -134,6 +134,7 @@ void LumiaCtrlImpl::GetOverview(::google::protobuf::RpcController* controller,
     MutexLock lock(&mutex_);
     const minion_set_id_index_t& id_index = boost::multi_index::get<id_tag>(minion_set_);
     minion_set_id_index_t::const_iterator it = id_index.begin();
+    int32_t count = 0;
     for (; it != id_index.end(); ++it) {
         const MinionStatus& status = it->minion_->status();
         if (status.devices_size() <= 0) {
@@ -155,14 +156,19 @@ void LumiaCtrlImpl::GetOverview(::google::protobuf::RpcController* controller,
             if (status.mounts(i).mounted()) {
                 continue;
             }
+            if (status.mounts(i).mount_point().find_first_of("/noah") == std::string::npos) {
+                continue;
+            }
             mount_ok = false;
             break;
         }
         view->set_mount_ok(mount_ok);
         view->set_device_ok(device_ok);
         view->set_datetime(status.datetime());
+        count++;
     }
     done->Run();
+    LOG(INFO, "get overview  count %d", count);
 }
 
 void LumiaCtrlImpl::ScheduleNextQuery() {
@@ -178,6 +184,9 @@ void LumiaCtrlImpl::LaunchQuery() {
     std::set<std::string>::iterator it = nodes_.begin();
     for (; it != nodes_.end(); ++it) {
         QueryNode(*it);
+    }
+    if (query_node_count_ == 0) {
+        ScheduleNextQuery();
     }
 }
 

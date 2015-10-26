@@ -55,7 +55,7 @@ int ImportData() {
     }
     ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
     ok = lumia->ImportData(FLAGS_d, FLAGS_s);
-    fprintf(stdout, "import data successfully");
+    fprintf(stdout, "import data successfully\n");
     return 0;
 }
 

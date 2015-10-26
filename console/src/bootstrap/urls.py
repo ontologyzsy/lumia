@@ -6,8 +6,7 @@ urlpatterns = urls.patterns('bootstrap.views',
 )
 
 
-
-#urlpatterns += urls.patterns('',
-#     (r'^quota/', urls.include('console.quota.urls')),
-#)
+urlpatterns += urls.patterns('',
+     (r'^minion/', urls.include('minion.urls')),
+)
 

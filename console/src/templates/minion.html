@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+.status_ok {
+    color:green;
+}
+
+.status_err {
+    color:red;
+}
+</style>
+
+<head>
+<body>
+
+<div class="minions">
+    <h3>overview</h3>
+    <table>
+        <tr>
+            <th>hostname</th>
+            <th>ip</th>
+            <th>device</th>
+            <th>mount</th>
+            <th>update</th>
+        </tr>
+
+        {% for minion in minions %}
+            {% if minion.device_ok and minion.mount_ok%}
+            <tr class="status_ok">
+            {% else %}
+            <tr class="status_err">
+            {% endif %}
+                <td> {{minion.hostname}}</td>
+                <td> {{minion.ip}}</td>
+                <td> {{minion.device_ok}}</td>
+                <td> {{minion.mount_ok}}</td>
+                <td> {{minion.last_update}}</td>
+            </tr>
+        {% endfor %}
+    </table>
+</div>
+
+</body>
+</html>
