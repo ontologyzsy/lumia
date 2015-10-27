@@ -56,6 +56,7 @@ public:
                            std::vector<MinionDesc>* minions) = 0;
     virtual bool ImportData(const std::string& dict_path,
                             const std::string& scripts_dir) = 0;
+    virtual bool DelMinion(const std::string& dict_path) = 0;
 };
 
 }

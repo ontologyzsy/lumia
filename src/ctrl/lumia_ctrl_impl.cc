@@ -462,6 +462,43 @@ bool LumiaCtrlImpl::DoInitAgent(const std::vector<std::string> hosts,
     return true;
 }
 
+bool LumiaCtrlImpl::DoDelAgent(const std::vector<std::string> hosts,
+                               const std::string scripts) {
+    std::string sessionid;
+    bool ok = minion_ctrl_->Exec(scripts,
+                                hosts,
+                                "root",
+                                10,
+                                &sessionid,
+                                boost::bind(&LumiaCtrlImpl::DelAgentCallBack, this, _1, _2, _3));
+    if (!ok) {
+        LOG(WARNING, "fail to del agents %s", boost::algorithm::join(hosts, ",").c_str());
+        return false;
+    }
+    LOG(INFO, "submit del cmd to agents %s successfully", boost::algorithm::join(hosts, ",").c_str());
+    return true;
+}
+
+void LumiaCtrlImpl::DelAgentCallBack(const std::string sessionid,
+                                     const std::vector<std::string> success,
+                                     const std::vector<std::string> fails) {
+    MutexLock lock(&mutex_);
+    LOG(INFO, "del agent call back succ %s, fails %s", boost::algorithm::join(success, ",").c_str(),
+        boost::algorithm::join(fails, ",").c_str());
+    minion_set_hostname_index_t& index = boost::multi_index::get<hostname_tag>(minion_set_);
+    for (size_t i = 0; i < success.size(); i++) {
+        minion_set_hostname_index_t::const_iterator it = index.find(success[i]);
+        if (it == index.end()) {
+            LOG(WARNING, "del agent with hostname %s does not exist in lumia", success[i].c_str());
+            continue;
+        }
+        //MinionIndex m_index(it->minion_->id(), it->minion_->hostname(), it->minion_->ip(), it->minion_); 
+        index.erase(it);
+        delete it->minion_;
+    }
+    return;
+}
+
 void LumiaCtrlImpl::InitAgentCallBack(const std::string sessionid,
                                       const std::vector<std::string> success,
                                       const std::vector<std::string> fails) {
@@ -544,9 +581,57 @@ void LumiaCtrlImpl::GetMinion(::google::protobuf::RpcController* /*controller*/,
         }
     }
     done->Run();
-
 }
 
+void LumiaCtrlImpl::DelMinion(::google::protobuf::RpcController* /*controller*/,
+                                const ::baidu::lumia::DelMinionRequest* request,
+                                ::baidu::lumia::DelMinionResponse* response,
+                                ::google::protobuf::Closure* done){
+    MutexLock lock(&mutex_);
+    std::vector<Minion> minion_vec;
+    std::vector<std::string> hosts;
+    const minion_set_ip_index_t& ip_index = boost::multi_index::get<ip_tag>(minion_set_);
+    for (int i = 0; i < request->ips_size(); i++) {
+        minion_set_ip_index_t::const_iterator it = ip_index.find(request->ips(i));
+        if (it != ip_index.end()) {
+            minion_vec.push_back(*(it->minion_));
+            hosts.push_back(it->minion_->hostname());
+        }
+    }   
+    const minion_set_hostname_index_t& ht_index = boost::multi_index::get<hostname_tag>(minion_set_);
+    for (int i = 0; i < request->hostnames_size(); i++) {
+        minion_set_hostname_index_t::const_iterator it = ht_index.find(request->hostnames(i));
+        if (it != ht_index.end()) {
+            minion_vec.push_back(*(it->minion_));
+            hosts.push_back(it->minion_->hostname());
+        }
+    }   
+    const minion_set_id_index_t& id_index = boost::multi_index::get<id_tag>(minion_set_);
+    for (int i = 0; i < request->ids_size(); i++) {
+        minion_set_id_index_t::const_iterator it  = id_index.find(request->ids(i));
+        if (it != id_index.end()) {
+            minion_vec.push_back(*(it->minion_));
+            hosts.push_back(it->minion_->hostname());
+        }
+    }
+    for (int i = 0; i < minion_vec.size(); i++) {
+        std::string minion_key = FLAGS_lumia_root_path + FLAGS_lumia_minion + "/" + minion_vec[i].id();
+        ::galaxy::ins::sdk::SDKError err;
+        bool ok = nexus_->Delete(minion_key, &err);
+        if (!ok || err != ::galaxy::ins::sdk::kOK) {
+            LOG(WARNING, "fail to del minion to nexus %s", minion_key.c_str());
+            continue;
+        }
+    }
+    std::map<std::string, std::string>::iterator sc_it = scripts_.find("remove-galaxy-agent.sh");
+    if (sc_it == scripts_.end()) {
+        LOG(WARNING, "deploy-galaxy-agent-60.sh does not exist in lumia");
+        return;
+    }
+    DoDelAgent(hosts, sc_it->second);    
+    response->set_status(kLumiaOk);
+    done->Run();
+}
 
 }
 }

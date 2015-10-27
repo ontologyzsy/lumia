@@ -113,12 +113,23 @@ message GetOverviewResponse {
     repeated MinionOverview minions = 1;
 }
 
+message DelMinionRequest {
+    repeated string ips = 1;
+    repeated string hostnames = 2;
+    repeated string ids = 3;
+}
+
+message DelMinionResponse {
+    optional LumiaStatus status = 1;
+}
+
 service LumiaCtrl {
     rpc ReportDeadMinion(ReportDeadMinionRequest) returns (ReportDeadMinionResponse);
     rpc GetMinion(GetMinionRequest) returns (GetMinionResponse);
     rpc ImportData(ImportDataRequest) returns (ImportDataResponse);
     rpc Ping(PingRequest) returns (PingResponse);
     rpc GetOverview(GetOverviewRequest) returns (GetOverviewResponse); 
+    rpc DelMinion(DelMinionRequest) returns (DelMinionResponse);
 }
 
 

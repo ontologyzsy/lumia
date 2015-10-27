@@ -28,6 +28,8 @@ public:
                    std::vector<MinionDesc>* minions);
     bool ImportData(const std::string& dict_path,
                     const std::string& scripts_dir);
+    bool DelMinion(const std::string& dict_path);
+
 private:
     ::baidu::galaxy::RpcClient* rpc_client_;
     LumiaCtrl_Stub* lumia_;
@@ -110,6 +112,25 @@ bool LumiaSdkImpl::GetMinion(const std::vector<std::string>& ips,
         minion.mount_ok = mount_ok;
         minion.device_ok = device_ok;
         minions->push_back(minion);
+    }
+    return true;
+}
+
+bool LumiaSdkImpl::DelMinion(const std::string& dict_path) {
+    DelMinionRequest request;
+    if (!dict_path.empty()) {
+        std::ifstream minion_list;
+        minion_list.open(dict_path.c_str());
+        char buffer[1024];
+        std::string minion_name;
+        while (getline(minion_list, minion_name)) {
+            request.add_hostnames(minion_name);
+        }
+    }
+    DelMinionResponse response;
+    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::DelMinion, &request, &response, 5, 1);
+    if (!ok || response.status() != kLumiaOk) {
+        return false;
     }
     return true;
 }

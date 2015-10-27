@@ -76,7 +76,10 @@ public:
                     const ::baidu::lumia::GetOverviewRequest* request,
                     ::baidu::lumia::GetOverviewResponse* response,
                     ::google::protobuf::Closure* done);
-
+    void DelMinion(::google::protobuf::RpcController* controller,
+                   const ::baidu::lumia::DelMinionRequest* request,
+                   ::baidu::lumia::DelMinionResponse* response,
+                   ::google::protobuf::Closure* done);
 
     void OnSessionTimeout();
 
@@ -110,6 +113,13 @@ private:
                        bool fails,
                        int error,
                        const std::string& node_addr);
+
+    bool DoDelAgent(const std::vector<std::string> hosts, const std::string scripts);
+
+    void LumiaCtrlImpl::DelAgentCallBack(const std::string sessionid, 
+                                         const std::vector<std::string> success, 
+                                         const std::vector<std::string> fails);
+
 private:
     MinionSet minion_set_;
     ::baidu::common::Mutex mutex_;

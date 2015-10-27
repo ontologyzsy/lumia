@@ -59,6 +59,24 @@ int ImportData() {
     return 0;
 }
 
+int DelMinion() {
+    std::string lumia_addr;
+    bool ok = GetLumiaAddr(&lumia_addr);
+    if (!ok) {
+        fprintf(stderr, "fail to get lumia addr");
+        return -1;
+    }
+    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
+    ok = lumia->DelMinion(FLAGS_s);
+    if (!ok) {
+        fprintf(stderr, "Del minion fail.");
+        return -1;
+    } else {
+        fprintf(stdout, "Del minions success.");
+        return 0;
+    }
+}
+
 int ReportDeadMinion() {
     if (FLAGS_i.empty()) {
         fprintf(stderr, "-i is required\n");
@@ -142,6 +160,8 @@ int main(int argc, char* argv[]) {
         return ShowMinion();
     } else if (strcmp(argv[1], "import") == 0){
         return ImportData();
+    } else if (strcmp(argv[1], "delete") == 0) {
+        return DelMinion();
     } else {
         fprintf(stderr, "%s", kLumiaUsage.c_str());
         return -1;
