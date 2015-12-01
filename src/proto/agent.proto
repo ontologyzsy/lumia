@@ -29,8 +29,31 @@ message QueryAgentResponse {
     optional string ip = 3;
 }
 
+message InitGalaxyEnvRequest {
+    optional bool hybrid = 1;
+    optional string data_center = 2;
+    optional int32 disk_size = 3;
+    optional int32 bandwidth = 4;
+}
+
+message InitGalaxyEnvResponse {
+    optional string ip = 1;
+    optional int32 status = 2;
+}
+
+message RemoveGalaxyEnvRequest {
+    optional bool hybrid = 1;
+}
+
+message RemoveGalaxyEnvResponse {
+    optional int32 status = 1;
+    optional string ip = 2;
+}
+
 service LumiaAgent {
     rpc Query(QueryAgentRequest) returns (QueryAgentResponse);
+    rpc InitGalaxyEnv(InitGalaxyEnvRequest) returns (InitGalaxyEnvResponse);
+    rpc RemoveGalaxyEnv(RemoveGalaxyEnvRequest) returns (RemoveGalaxyEnvResponse);
 }
 
 

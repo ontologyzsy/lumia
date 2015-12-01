@@ -26,7 +26,10 @@ DECLARE_string(lumia_ctrl_port);
 
 DECLARE_string(lumia_agent_ip);
 DECLARE_string(lumia_agent_port);
-
+DECLARE_string(galaxy_script);
+DECLARE_string(galaxy_script_hybrid);
+DECLARE_string(galaxy_remove_script);
+DECLARE_string(galaxy_ftp_path);
 
 namespace baidu {
 namespace lumia {
@@ -296,6 +299,79 @@ void LumiaAgentImpl::Query(::google::protobuf::RpcController* /*controller*/,
     response->set_ip(FLAGS_lumia_agent_ip);
     response->set_status(0);
     done->Run();
+}
+
+void LumiaAgentImpl::InitGalaxyEnv(::google::protobuf::RpcController* /*controller*/,
+                   const ::baidu::lumia::InitGalaxyEnvRequest* request,
+                   ::baidu::lumia::InitGalaxyEnvResponse* response,
+                   ::google::protobuf::Closure* done) {
+    std::string cmd;
+    int check_err = 0;
+    if (request->hybrid()) {
+        cmd = FLAGS_galaxy_script_hybrid;
+    } else {
+        cmd = FLAGS_galaxy_script;
+    }
+    if (request->has_data_center()) {
+        cmd = cmd +  " -data_center" + " " + request->data_center();
+    } 
+    if (request->has_disk_size()) {
+        std::stringstream ss;
+        ss << request->disk_size();
+        cmd = cmd + " -disk_size" + " " + ss.str();
+    } else {
+        check_err = 255;
+    } 
+    if (request->has_bandwidth()) {
+        std::stringstream ss;
+        ss << request->bandwidth();
+        cmd = cmd + " -bandwidth" + " " + ss.str();
+    } else {
+        check_err = 255;
+    }
+    cmd = cmd + " -ftp_path" + " " + FLAGS_galaxy_ftp_path;
+    if (check_err != 0) {
+        response->set_status(check_err);
+    } else {
+        std::stringstream ss;
+        int exit_code = -1;
+        bool ok = SyncExec(cmd, ss, &exit_code);
+        if (ok && exit_code == 0) {
+            response->set_status(0);
+        } else {
+            response->set_status(exit_code);
+        }
+    }
+    response->set_ip(FLAGS_lumia_agent_ip);
+    done->Run();
+    return;
+}
+
+void LumiaAgentImpl::RemoveGalaxyEnv(::google::protobuf::RpcController* /*controller*/,
+                                     const ::baidu::lumia::RemoveGalaxyEnvRequest* request,
+                                     ::baidu::lumia::RemoveGalaxyEnvResponse* response,
+                                     ::google::protobuf::Closure* done)  {
+
+    std::string cmd;
+#if 0
+    if (request->hybrid()) {
+        cmd += "remove_galaxy_agent_hybrid.sh";
+    } else {
+        cmd += "remove_galaxy_agent.sh";
+    }
+#endif
+    cmd = FLAGS_galaxy_remove_script;
+    std::stringstream ss;
+    int exit_code = -1;
+    bool ok = SyncExec(cmd, ss, &exit_code);
+    if (ok && exit_code == 0) {
+        response->set_status(0);
+    } else {
+        response->set_status(exit_code);
+    }
+    response->set_ip(FLAGS_lumia_agent_ip);
+    done->Run();
+    return;
 }
 
 std::string LumiaAgentImpl::GetHostName(){

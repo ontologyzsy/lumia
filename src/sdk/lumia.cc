@@ -29,7 +29,8 @@ public:
     bool ImportData(const std::string& dict_path,
                     const std::string& scripts_dir);
     bool DelMinion(const std::string& dict_path);
-
+    bool InitGalaxy(const std::string& dict_path);
+    bool RemoveGalaxy(const std::string& dict_path);
 private:
     ::baidu::galaxy::RpcClient* rpc_client_;
     LumiaCtrl_Stub* lumia_;
@@ -194,5 +195,49 @@ LumiaSdk* LumiaSdk::ConnectLumia(const std::string& lumia_addr){
     return new LumiaSdkImpl(lumia_addr);
 }
 
+bool LumiaSdkImpl::InitGalaxy(const std::string& dict_path) {
+    InitGalaxyRequest request;
+    if (dict_path.empty()) {
+        return false;
+    }
+    std::ifstream ip_minions_is;
+    ip_minions_is.open(dict_path.c_str(), std::ifstream::binary);
+    char buffer[1024];
+    std::stringstream ss;
+    while(ip_minions_is.good()) {
+        ip_minions_is.read(buffer, 1024);
+        int32_t read_count = ip_minions_is.gcount();
+        ss.write(buffer, read_count);
+    }
+    request.mutable_minions()->ParseFromString(ss.str());
+    InitGalaxyResponse response;
+    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::InitGalaxy,
+                                       &request, &response, 100, 1);
+    if (!ok || response.status() != kLumiaOk) {
+        return false;
+    }
+    return true;
+}
+
+bool LumiaSdkImpl::RemoveGalaxy(const std::string& dict_path) {
+    RemoveGalaxyRequest request;
+    if (dict_path.empty()) {
+        return false;
+    }
+    std::ifstream ip_minions_is;
+    ip_minions_is.open(dict_path.c_str());
+    char buffer[1024];
+    std::string minion_name;
+    while (getline(ip_minions_is, minion_name)) {
+        request.add_hostnames(minion_name);
+    }
+    RemoveGalaxyResponse response;
+    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::RemoveGalaxy,
+                                       &request, &response, 100, 1);
+    if (!ok || response.status() != kLumiaOk) {
+        return false;
+    }
+    return true;
+}
 }
 }

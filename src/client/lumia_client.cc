@@ -24,6 +24,8 @@ const std::string kLumiaUsage = "lumia client.\n"
                                  "    lumia import -d <minion dict path> -s <scripts dir>\n"
                                  "    lumia enter safemode\n"
                                  "    lumia leave safemode\n"
+                                 "    lumia init -d <minion dict path>\n"
+                                 "    lumia remove -d <minion dict path>\n"
                                  "Options:\n"
                                  "    -i ip          Report dead minion using ip address\n"
                                  "    -d path        Import minion dict from file path\n"
@@ -75,6 +77,32 @@ int DelMinion() {
         fprintf(stdout, "Del minions success.");
         return 0;
     }
+}
+
+int InitGalaxy() {
+    std::string lumia_addr;
+    bool ok = GetLumiaAddr(&lumia_addr);
+    if (ok) {
+        fprintf(stderr, "fail to get lumia addr");
+        return -1;
+    }
+    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
+    ok = lumia->InitGalaxy(FLAGS_d);
+    fprintf(stdout, "init galaxy result : %u", ok);
+    return 0;
+}
+
+int RemoveGalaxy() {
+    std::string lumia_addr;
+    bool ok = GetLumiaAddr(&lumia_addr);
+    if (ok) {
+        fprintf(stderr, "fail to get lumia addr");
+        return -1;
+    }
+    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
+    ok = lumia->InitGalaxy(FLAGS_d);          
+    fprintf(stdout, "init galaxy result : %u", ok);
+    return 0;
 }
 
 int ReportDeadMinion() {
@@ -162,6 +190,10 @@ int main(int argc, char* argv[]) {
         return ImportData();
     } else if (strcmp(argv[1], "delete") == 0) {
         return DelMinion();
+    } else if (strcmp(argv[1], "init") == 0) {
+        return InitGalaxy();
+    } else if (strcmp(argv[1], "remove") == 0) {
+        return RemoveGalaxy();
     } else {
         fprintf(stderr, "%s", kLumiaUsage.c_str());
         return -1;

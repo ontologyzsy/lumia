@@ -84,6 +84,17 @@ public:
     void OnSessionTimeout();
 
     void OnLockChange(const std::string& sessionid);
+
+    void InitGalaxy(::google::protobuf::RpcController* controller,
+                    const ::baidu::lumia::InitGalaxyRequest* request,
+                    ::baidu::lumia::InitGalaxyResponse* response,
+                    ::google::protobuf::Closure* done);
+
+    void RemoveGalaxy(::google::protobuf::RpcController* controller,
+                      const ::baidu::lumia::RemoveGalaxyRequest* request,
+                      ::baidu::lumia::RemoveGalaxyResponse* response,
+                      ::google::protobuf::Closure* done);
+
 private:
     void HandleDeadReport(const std::string& ip);
     void CheckDeadCallBack(const std::string sessionid, 
@@ -106,7 +117,27 @@ private:
     void HandleNodeOffline(const std::string& node_addr);
 
     void ScheduleNextQuery();
+    
+    void ScheduleNextQueryGalaxy();
+    
     void LaunchQuery();
+    
+    void LaunchQueryGalaxy();
+
+    void InitGalaxyEnv(const std::string& node_addr);
+
+    void InitGalaxyEnvCallback(const InitGalaxyEnvRequest* request,
+                               InitGalaxyEnvResponse* response,
+                               bool fails, int error,
+                               const std::string& node_addr);
+
+    void RemoveGalaxyEnv(const std::string& node_addr, const bool init);
+    
+    void RemoveGalaxyEnvCallback(const RemoveGalaxyEnvRequest* request,
+                                 RemoveGalaxyEnvResponse* response,
+                                 bool fails, int error,
+                                 const std::string& node_addr, bool init);
+
     void QueryNode(const std::string& node_addr);
     void QueryCallBack(const QueryAgentRequest* request,
                        QueryAgentResponse* response,
@@ -143,6 +174,9 @@ private:
     // 
     int64_t query_node_count_;
     ::baidu::galaxy::RpcClient* rpc_client_;
+
+    //
+    std::string galaxy_master_addr;
 };
 
 }

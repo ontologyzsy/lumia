@@ -20,6 +20,7 @@ enum MinionState {
     kMinionDeadChecking = 4;
     kMinionJoining = 5;
     kMinionError = 6;
+    kMinionDel = 7;
 }
 
 message Cpu {
@@ -53,6 +54,7 @@ message Minion {
 
     optional string datacenter = 11;
     optional MinionStatus status = 12;
+    optional bool hybrid = 13;
 }
 
 message ReportDeadMinionRequest {
@@ -89,6 +91,22 @@ message ImportDataRequest {
 }
 
 message ImportDataResponse {
+    optional LumiaStatus status = 1;
+}
+
+message InitGalaxyRequest {
+    optional Minions minions = 1;
+}
+
+message InitGalaxyResponse {
+    optional LumiaStatus status = 1;
+}
+
+message RemoveGalaxyRequest {
+    repeated string hostnames = 1;
+}
+
+message RemoveGalaxyResponse {
     optional LumiaStatus status = 1;
 }
 
@@ -130,6 +148,8 @@ service LumiaCtrl {
     rpc Ping(PingRequest) returns (PingResponse);
     rpc GetOverview(GetOverviewRequest) returns (GetOverviewResponse); 
     rpc DelMinion(DelMinionRequest) returns (DelMinionResponse);
+    rpc InitGalaxy(InitGalaxyRequest) returns (InitGalaxyResponse);
+    rpc RemoveGalaxy(RemoveGalaxyRequest) returns(RemoveGalaxyResponse);
 }
 
 

@@ -42,6 +42,7 @@ struct MinionDesc {
     std::string datacenter;
     bool mount_ok;
     bool device_ok;
+    bool hybrid;
 };
 
 class LumiaSdk {
@@ -57,6 +58,8 @@ public:
     virtual bool ImportData(const std::string& dict_path,
                             const std::string& scripts_dir) = 0;
     virtual bool DelMinion(const std::string& dict_path) = 0;
+    virtual bool InitGalaxy(const std::string& dict_path) = 0;
+    virtual bool RemoveGalaxy(const std::string& dict_path) = 0;
 };
 
 }
