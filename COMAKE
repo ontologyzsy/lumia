@@ -25,10 +25,10 @@ CXXFLAGS('-g -pipe -W -Wall -fPIC')
 PROTOC('../../../third-64/protobuf/bin/protoc')
 
 #头文件路径.
-INCPATHS('. ./src ./src/proto ./output/include ./common/include ./ins/sdk/')
+INCPATHS('. ./src ./src/proto ./output/include ./common/include ./ins/sdk/ ./src/galaxy/ ../../../public/noah/meta-query/meta-query-sdk-c/include/metaquery/')
 
 #使用库
-LIBS('./common/libcommon.a ./ins/libins_sdk.a')
+LIBS('./common/libcommon.a ./ins/libins_sdk.a ../../../public/noah/meta-query/meta-query-sdk-c/output/lib/libmetaquery.a')
 
 #链接参数.
 LDFLAGS('-lpthread -lz -ldl -lcrypto -lrt -lidn -lssl -lldap')
@@ -42,6 +42,7 @@ CONFIGS('third-64/gflags@gflags_2-0-0-100_PD_BL')
 CONFIGS('bdg/log/build-64/libs/thirdparty/rapidjson@1.0.0.0')
 CONFIGS('third-64/leveldb@base')
 CONFIGS('public/noah/giano-lib/release/baas-lib-c@ci-base')
+CONFIGS('public/noah/meta-query/meta-query-sdk-c@meta-query-sdk-c_1-0-0-0_PD_BL')
 
 lumia_ctrl_src = 'src/ctrl/lumia_ctrl_main.cc\
                 src/ctrl/lumia_ctrl_impl.cc\
@@ -50,7 +51,10 @@ lumia_ctrl_src = 'src/ctrl/lumia_ctrl_main.cc\
                 src/flags.cc\
                 src/ctrl/minion_ctrl.cc\
                 src/ctrl/http_client.cc\
-                src/ctrl/lumia_ctrl_util.cc'
+                src/ctrl/lumia_ctrl_util.cc\
+                src/galaxy/galaxy.cc\
+                src/proto/galaxy.proto\
+                src/proto/master.proto'
 
 lumia_sdk_src = 'src/sdk/lumia.cc\
                  src/proto/lumia.proto\

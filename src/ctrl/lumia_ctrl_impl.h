@@ -76,24 +76,19 @@ public:
                     const ::baidu::lumia::GetOverviewRequest* request,
                     ::baidu::lumia::GetOverviewResponse* response,
                     ::google::protobuf::Closure* done);
-    void DelMinion(::google::protobuf::RpcController* controller,
-                   const ::baidu::lumia::DelMinionRequest* request,
-                   ::baidu::lumia::DelMinionResponse* response,
+    void ExportData(::google::protobuf::RpcController* controller,
+                   const ::baidu::lumia::ExportDataRequest* request,
+                   ::baidu::lumia::ExportDataResponse* response,
                    ::google::protobuf::Closure* done);
 
     void OnSessionTimeout();
 
     void OnLockChange(const std::string& sessionid);
 
-    void InitGalaxy(::google::protobuf::RpcController* controller,
-                    const ::baidu::lumia::InitGalaxyRequest* request,
-                    ::baidu::lumia::InitGalaxyResponse* response,
+    void ExecMinion(::google::protobuf::RpcController* controller,
+                    const ::baidu::lumia::ExecMinionRequest* request,
+                    ::baidu::lumia::ExecMinionResponse* response,
                     ::google::protobuf::Closure* done);
-
-    void RemoveGalaxy(::google::protobuf::RpcController* controller,
-                      const ::baidu::lumia::RemoveGalaxyRequest* request,
-                      ::baidu::lumia::RemoveGalaxyResponse* response,
-                      ::google::protobuf::Closure* done);
 
 private:
     void HandleDeadReport(const std::string& ip);

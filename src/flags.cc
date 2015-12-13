@@ -36,3 +36,7 @@ DEFINE_string(galaxy_script_hybrid, "./scripts/deploy_galaxy_agent_hunbu.sh", "d
 DEFINE_string(galaxy_script, "./scripts/deploy_galaxy_agent.sh", "deploy galaxy script");
 DEFINE_string(galaxy_remove_script, "./scripts/remove_galaxy.sh", "remove galaxy script");
 DEFINE_string(galaxy_ftp_path, "ftp://yq01-tera1.yq01.baidu.com/tmp/galaxy.tar.gz", "galaxy ftp path");
+DEFINE_int32(galaxy_cpu_use_percent, 100, "galaxy use cpu percent");
+DEFINE_int32(galaxy_mem_use_percent, 100, "galaxy use mem percent");
+DEFINE_int64(galaxy_disk_usage, 0, "galaxy disk usage (G)");
+DEFINE_int64(galaxy_bandwidth_usage, 0, "galaxy bandwidth usage (Bps)");

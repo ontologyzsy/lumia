@@ -30,6 +30,14 @@ public:
                const ::baidu::lumia::QueryAgentRequest* request,
                ::baidu::lumia::QueryAgentResponse* response,
                ::google::protobuf::Closure* done);
+    void InitGalaxyEnv(::google::protobuf::RpcController* controller,
+                       const ::baidu::lumia::InitGalaxyEnvRequest* request,
+                       ::baidu::lumia::InitGalaxyEnvResponse* response,
+                       ::google::protobuf::Closure* done);
+    void RemoveGalaxyEnv(::google::protobuf::RpcController* controller,
+                         const ::baidu::lumia::RemoveGalaxyEnvRequest* request,
+                         ::baidu::lumia::RemoveGalaxyEnvResponse* response,
+                         ::google::protobuf::Closure* done);
     bool Init();
 private:
     void DoCheck();

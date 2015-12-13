@@ -12,6 +12,7 @@
 DEFINE_string(i, "", "Report dead minion with specify ip address");
 DEFINE_string(d, "", "Import minion dict from path");
 DEFINE_string(s, "", "Import system script from dir");
+DEFINE_string(r, "", "Export system script from dir");
 DECLARE_string(flagfile);
 DECLARE_string(nexus_servers);
 DECLARE_string(lumia_main);
@@ -21,11 +22,11 @@ const std::string kLumiaUsage = "lumia client.\n"
                                  "Usage:\n"
                                  "    lumia report -i <minion ip>\n"
                                  "    lumia show -i <minion ip>\n"
-                                 "    lumia import -d <minion dict path> -s <scripts dir>\n"
+                                 "    lumia import -d <minion dict path> -s <install scripts dir> -r <remove script dir>\n"
+                                 "    lumia export -d <minion dict path>"
                                  "    lumia enter safemode\n"
                                  "    lumia leave safemode\n"
-                                 "    lumia init -d <minion dict path>\n"
-                                 "    lumia remove -d <minion dict path>\n"
+                                 "    lumia exec -d <minion dict path> -s <scripts dir>"
                                  "Options:\n"
                                  "    -i ip          Report dead minion using ip address\n"
                                  "    -d path        Import minion dict from file path\n"
@@ -56,12 +57,12 @@ int ImportData() {
         return -1;
     }
     ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
-    ok = lumia->ImportData(FLAGS_d, FLAGS_s);
+    ok = lumia->ImportData(FLAGS_d, FLAGS_s, FLAGS_r);
     fprintf(stdout, "import data successfully\n");
     return 0;
 }
 
-int DelMinion() {
+int ExportData() {
     std::string lumia_addr;
     bool ok = GetLumiaAddr(&lumia_addr);
     if (!ok) {
@@ -69,7 +70,7 @@ int DelMinion() {
         return -1;
     }
     ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
-    ok = lumia->DelMinion(FLAGS_s);
+    ok = lumia->ExportData(FLAGS_d);
     if (!ok) {
         fprintf(stderr, "Del minion fail.");
         return -1;
@@ -79,30 +80,16 @@ int DelMinion() {
     }
 }
 
-int InitGalaxy() {
+int ExecMinion() {
     std::string lumia_addr;
-    bool ok = GetLumiaAddr(&lumia_addr);
     if (ok) {
         fprintf(stderr, "fail to get lumia addr");
         return -1;
     }
     ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
-    ok = lumia->InitGalaxy(FLAGS_d);
+    ok = lumia->ExecMinion(FLAGS_d, FLAGS_s);
     fprintf(stdout, "init galaxy result : %u", ok);
-    return 0;
-}
-
-int RemoveGalaxy() {
-    std::string lumia_addr;
-    bool ok = GetLumiaAddr(&lumia_addr);
-    if (ok) {
-        fprintf(stderr, "fail to get lumia addr");
-        return -1;
-    }
-    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
-    ok = lumia->InitGalaxy(FLAGS_d);          
-    fprintf(stdout, "init galaxy result : %u", ok);
-    return 0;
+    return 0; 
 }
 
 int ReportDeadMinion() {
@@ -188,12 +175,10 @@ int main(int argc, char* argv[]) {
         return ShowMinion();
     } else if (strcmp(argv[1], "import") == 0){
         return ImportData();
-    } else if (strcmp(argv[1], "delete") == 0) {
-        return DelMinion();
-    } else if (strcmp(argv[1], "init") == 0) {
-        return InitGalaxy();
-    } else if (strcmp(argv[1], "remove") == 0) {
-        return RemoveGalaxy();
+    } else if (strcmp(argv[1], "export") == 0) {
+        return ExportData();
+    } else if (strcmp(argv[1], "exec") == 0) {
+        return ExecMinion();
     } else {
         fprintf(stderr, "%s", kLumiaUsage.c_str());
         return -1;

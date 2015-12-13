@@ -56,10 +56,11 @@ public:
                            const std::vector<std::string>& ids,
                            std::vector<MinionDesc>* minions) = 0;
     virtual bool ImportData(const std::string& dict_path,
+                            const std::string& init_scripts_dir,
+                            const std::string& rm_scripts_dir) = 0;
+    virtual bool ExportData(const std::string& dict_path) = 0;
+    virtual bool ExecMinion(const std::string& dict_path,
                             const std::string& scripts_dir) = 0;
-    virtual bool DelMinion(const std::string& dict_path) = 0;
-    virtual bool InitGalaxy(const std::string& dict_path) = 0;
-    virtual bool RemoveGalaxy(const std::string& dict_path) = 0;
 };
 
 }

@@ -59,7 +59,7 @@ bool LumiaAgentImpl::ParseScanDevice(const std::string& output,
     std::vector<std::string> lines;
     boost::split(lines, output, boost::is_any_of("\n"));
     for (size_t i = 0; i < lines.size(); i++) {
-        if (lines[i].find_first_of("/dev/sd", 0) != 0) {
+        if (lines[i].find("/dev/sd", 0) != 0) {
             continue;
         }
         std::vector<std::string> parts;
@@ -77,7 +77,9 @@ bool LumiaAgentImpl::Init() {
     } else {
         LOG(INFO, "fail to scan devices");
     }
-    pool_.AddTask(boost::bind(&LumiaAgentImpl::DoCheck, this));
+    if (FLAGS_need_dev_check) {
+        pool_.AddTask(boost::bind(&LumiaAgentImpl::DoCheck, this));
+    }
     pool_.DelayTask(2000, boost::bind(&LumiaAgentImpl::KeepAlive, this));
     return ok;
 }
@@ -213,7 +215,8 @@ bool LumiaAgentImpl::CheckDevice(const std::string& devices, bool* ok) {
     if (ret) {
         // self check passed
         std::size_t index = ss.str().find("PASSED");
-        if (exit_code == 0 && index != std::string::npos) {
+        if (exit_code == 0 && (index != std::string::npos 
+                    || ss.str().find("OK") != std::string::npos)) {
             *ok = true;
         }else {
             *ok = false;
@@ -263,7 +266,7 @@ bool LumiaAgentImpl::ParseTab(const std::string& content,
     std::vector<std::string> lines;
     boost::split(lines, content, boost::is_any_of("\n"));
     for (size_t i = 0; i < lines.size(); i++) {
-        if (lines[i].find_first_of("/dev/sd", 0) != 0) {
+        if (lines[i].find("/dev/sd", 0) != 0) {
             continue;
         }
         std::vector<std::string> parts;
