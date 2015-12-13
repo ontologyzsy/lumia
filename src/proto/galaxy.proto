@@ -1,0 +1,134 @@
+package baidu.galaxy;
+
+option cc_generic_services = true;
+
+enum Status {
+    kOk = 0;
+    kUnknown = 1;
+    kQuota = 2;
+    kJobNotFound = 3;
+    kPodNotFound = 4;
+    kAgentNotFound = 5;
+    kJobSubmitFail = 6;
+    kJobUpdateFail = 7;
+    kNotFound = 16;
+    kInputError = 17;
+    kPersistenceError = 18;
+    kJobTerminateFail = 19;
+    kRpcError = 20;
+    kLabelAgentFail = 21;
+}
+
+enum PodState {
+    kPodPending = 0;
+    kPodDeploying = 1;
+    kPodRunning = 2;
+    kPodTerminate = 3;
+    kPodSuspend = 4;
+    kPodFinish = 5;
+    kPodError = 6;
+}
+
+enum PodStage {
+    kStagePending = 0;
+    kStageRunning = 1;
+    kStageDeath = 2;
+    kStageRemoved = 3;
+}
+
+enum TaskState {
+    kTaskPending = 0;
+    kTaskDeploy = 1;
+    kTaskRunning = 2;
+    kTaskTerminate = 3;
+    kTaskSuspend = 4;
+    kTaskFinish = 5;
+    kTaskError = 6;
+}
+
+
+enum SourceType {
+    kSourceTypeBinary = 0;
+    kSourceTypeFTP = 1;
+}
+
+enum AgentState {
+    kAlive = 0;
+    kDead = 1;    
+}
+
+message Volume {
+    optional int64 quota = 1;
+    optional string path  = 2;
+}
+
+message Resource {
+    optional int32 millicores = 1;
+    optional int64 memory = 2;
+    repeated int32 ports = 3;
+    repeated Volume disks = 4;
+    repeated Volume ssds = 5; 
+}
+
+enum MemIsolationType {
+    kMemIsolationCgroup = 0;
+    kMemIsolationLimit = 1;
+}
+
+message TaskDescriptor {
+    optional bytes binary = 1; 
+    optional string start_command = 2;
+    optional string stop_command = 3; 
+    // the disk and ssd path must be the same with
+    // pod's resource 
+    optional Resource requirement = 4;
+    repeated string labels = 5;
+    repeated string env = 6;
+    // generate it automatically when create job
+    optional int32 offset = 7;
+    optional SourceType source_type = 8;
+    optional MemIsolationType mem_isolation_type = 9;
+}
+
+message PodDescriptor {
+    repeated TaskDescriptor tasks = 1;
+    // request cpu,mem,port,disk and ssd from agent
+    // and mount the alloced disk and alloced ssd to path
+    // that user required
+    optional Resource requirement = 2;
+    optional bool pin_on_agent = 3 [default = false];
+    repeated string labels = 4;
+    optional string version = 5;
+}
+
+message TaskStatus {
+    optional string taskid = 1;
+    optional int32 exit_code = 2;
+    optional Resource resource_used = 3;
+    optional string version = 4;
+    optional TaskState state = 5;
+}
+
+message PodStatus {
+    optional string podid = 1;
+    optional string jobid = 2;
+    repeated TaskStatus status = 3; 
+    optional Resource resource_used = 4;
+    optional string endpoint = 5;
+    optional PodState state = 7;
+    optional PodStage stage = 8;
+    optional string pod_gc_path = 9;
+    optional string version = 10;
+}
+
+message AgentInfo {
+    optional string endpoint = 1;
+    optional Resource total = 2;
+    optional Resource assigned = 3;
+    optional Resource used = 5;
+    repeated PodStatus pods = 7;
+    optional AgentState state = 8;
+    optional int32 version = 9;
+
+    repeated string tags = 10;
+}
