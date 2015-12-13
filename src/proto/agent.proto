@@ -50,8 +50,18 @@ message RemoveGalaxyEnvResponse {
     optional string ip = 2;
 }
 
+message ExecRequest {
+    optional string cmd = 1;
+    optional string script = 2;
+}
+
+message ExecResponse {
+    optional int32 status;
+}
+
 service LumiaAgent {
     rpc Query(QueryAgentRequest) returns (QueryAgentResponse);
+    rpc Exec(ExecRequest) returns (ExecResponse);
     rpc InitGalaxyEnv(InitGalaxyEnvRequest) returns (InitGalaxyEnvResponse);
     rpc RemoveGalaxyEnv(RemoveGalaxyEnvRequest) returns (RemoveGalaxyEnvResponse);
 }

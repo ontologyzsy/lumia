@@ -99,7 +99,7 @@ private:
                         const std::vector<std::string> success,
                         const std::vector<std::string> fails);
 
-    void HandleInitAgent(const std::vector<std::string> hosts);
+    void HandleInitAgent(const std::string& node_addr );
     void InitAgentCallBack(const std::string sessionid,
                            const std::vector<std::string> success,
                            const std::vector<std::string> fails);
@@ -119,16 +119,16 @@ private:
     
     void LaunchQueryGalaxy();
 
-    void InitGalaxyEnv(const std::string& node_addr);
+    void HandleInitGalaxy(const std::string& node_addr);
 
-    void InitGalaxyEnvCallback(const InitGalaxyEnvRequest* request,
+    void InitGalaxyCallback(const InitGalaxyEnvRequest* request,
                                InitGalaxyEnvResponse* response,
                                bool fails, int error,
                                const std::string& node_addr);
 
-    void RemoveGalaxyEnv(const std::string& node_addr, const bool init);
+    void HandleRemoveGalaxy(const std::string& node_addr);
     
-    void RemoveGalaxyEnvCallback(const RemoveGalaxyEnvRequest* request,
+    void RemoveGalaxyCallback(const RemoveGalaxyEnvRequest* request,
                                  RemoveGalaxyEnvResponse* response,
                                  bool fails, int error,
                                  const std::string& node_addr, bool init);
