@@ -40,3 +40,5 @@ DEFINE_int32(galaxy_cpu_use_percent, 100, "galaxy use cpu percent");
 DEFINE_int32(galaxy_mem_use_percent, 100, "galaxy use mem percent");
 DEFINE_int64(galaxy_disk_usage, 0, "galaxy disk usage (G)");
 DEFINE_int64(galaxy_bandwidth_usage, 0, "galaxy bandwidth usage (Bps)");
+DEFINE_int32(galaxy_cpu_max_percent, 80, "galaxy cpu max percent");
+DEFINE_int32(galaxy_mem_max_percent, 80, "galaxy mem max percent");

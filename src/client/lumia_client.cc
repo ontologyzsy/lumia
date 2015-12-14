@@ -20,12 +20,9 @@ DECLARE_string(lumia_root_path);
 
 const std::string kLumiaUsage = "lumia client.\n"
                                  "Usage:\n"
-                                 "    lumia report -i <minion ip>\n"
                                  "    lumia show -i <minion ip>\n"
-                                 "    lumia import -d <minion dict path> -s <install scripts dir> -r <remove script dir>\n"
+                                 "    lumia import -d <minion dict path> -s <scripts dir>\n"
                                  "    lumia export -d <minion dict path>"
-                                 "    lumia enter safemode\n"
-                                 "    lumia leave safemode\n"
                                  "    lumia exec -d <minion dict path> -s <scripts dir>"
                                  "Options:\n"
                                  "    -i ip          Report dead minion using ip address\n"
@@ -57,7 +54,7 @@ int ImportData() {
         return -1;
     }
     ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
-    ok = lumia->ImportData(FLAGS_d, FLAGS_s, FLAGS_r);
+    ok = lumia->ImportData(FLAGS_d, FLAGS_s);
     fprintf(stdout, "import data successfully\n");
     return 0;
 }
@@ -82,6 +79,7 @@ int ExportData() {
 
 int ExecMinion() {
     std::string lumia_addr;
+    bool ok = GetLumiaAddr(&lumia_addr);
     if (ok) {
         fprintf(stderr, "fail to get lumia addr");
         return -1;
@@ -91,28 +89,6 @@ int ExecMinion() {
     fprintf(stdout, "init galaxy result : %u", ok);
     return 0; 
 }
-
-int ReportDeadMinion() {
-    if (FLAGS_i.empty()) {
-        fprintf(stderr, "-i is required\n");
-        return -1;
-    }
-    std::string lumia_addr;
-    bool ok = GetLumiaAddr(&lumia_addr);
-    if (!ok) {
-        fprintf(stderr, "fail to get lumia addr");
-        return -1;
-    }
-    ::baidu::lumia::LumiaSdk* lumia = ::baidu::lumia::LumiaSdk::ConnectLumia(lumia_addr);
-    ok = lumia->ReportDeadMinion(FLAGS_i, "client report");
-    if (ok) {
-        fprintf(stdout, "report dead minion %s successfully\n", FLAGS_i.c_str());
-        return 0;
-    }
-    fprintf(stderr, "fail to report dead minion %s\n", FLAGS_i.c_str());
-    return -1;
-}
-
 int ShowMinion() {
     if (FLAGS_i.empty()) {
         fprintf(stderr, "-i is required\n");
@@ -169,9 +145,12 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "%s", kLumiaUsage.c_str());
         return -1;
     }
+#if 0
     if (strcmp(argv[1], "report") == 0) {
         return ReportDeadMinion();
-    } else if (strcmp(argv[1], "show") == 0) {
+    } else 
+#endif    
+    if (strcmp(argv[1], "show") == 0) {
         return ShowMinion();
     } else if (strcmp(argv[1], "import") == 0){
         return ImportData();

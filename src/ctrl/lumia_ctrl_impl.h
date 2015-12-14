@@ -53,11 +53,6 @@ public:
     LumiaCtrlImpl();
     ~LumiaCtrlImpl();
     void Init();
-    // galaxy log checker report dead agent
-    void ReportDeadMinion(::google::protobuf::RpcController* controller,
-                          const ::baidu::lumia::ReportDeadMinionRequest* request,
-                          ::baidu::lumia::ReportDeadMinionResponse* response,
-                          ::google::protobuf::Closure* done);
 
     void GetMinion(::google::protobuf::RpcController* controller,
                    const ::baidu::lumia::GetMinionRequest* request,
@@ -91,7 +86,6 @@ public:
                     ::google::protobuf::Closure* done);
 
 private:
-    void HandleDeadReport(const std::string& ip);
     void CheckDeadCallBack(const std::string sessionid, 
                            const std::vector<std::string> success,
                            const std::vector<std::string> fails);
@@ -121,17 +115,17 @@ private:
 
     void HandleInitGalaxy(const std::string& node_addr);
 
-    void InitGalaxyCallback(const InitGalaxyEnvRequest* request,
-                               InitGalaxyEnvResponse* response,
-                               bool fails, int error,
-                               const std::string& node_addr);
-
     void HandleRemoveGalaxy(const std::string& node_addr);
+
+    void HandleExecGalaxy(const std::string& node_addr,
+                          const std::string& cmd,
+                          const std::string& script);
     
-    void RemoveGalaxyCallback(const RemoveGalaxyEnvRequest* request,
-                                 RemoveGalaxyEnvResponse* response,
-                                 bool fails, int error,
-                                 const std::string& node_addr, bool init);
+    void ExecCallback(const ExecRequest* request,
+                      ExecResponse* response,
+                      bool fails, int /*error*/,
+                      const std::string& node_addr,
+                      const std::string& cmd);
 
     void QueryNode(const std::string& node_addr);
     void QueryCallBack(const QueryAgentRequest* request,
@@ -139,12 +133,15 @@ private:
                        bool fails,
                        int error,
                        const std::string& node_addr);
+    
+#if 0
 
     bool DoDelAgent(const std::vector<std::string> hosts, const std::string scripts);
 
     void LumiaCtrlImpl::DelAgentCallBack(const std::string sessionid, 
                                          const std::vector<std::string> success, 
                                          const std::vector<std::string> fails);
+#endif
 
 private:
     MinionSet minion_set_;

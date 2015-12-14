@@ -34,9 +34,12 @@ DECLARE_string(galaxy_ftp_path);
 namespace baidu {
 namespace lumia {
 
+static const uint64_t MIN_COLLECT_TIME = 4;
+
 LumiaAgentImpl::LumiaAgentImpl():smartctl_(FLAGS_lumia_agent_smartctl_bin_path),
     pool_(4){
     rpc_client_ = new ::baidu::galaxy::RpcClient();
+    stat_ = new SysStat();
 }
 
 LumiaAgentImpl::~LumiaAgentImpl(){}
@@ -71,17 +74,18 @@ bool LumiaAgentImpl::ParseScanDevice(const std::string& output,
 }
 
 bool LumiaAgentImpl::Init() {
-    bool ok = ScanDevice(devices_);
+   /* bool ok = ScanDevice(devices_);
     if (ok) {
         LOG(INFO, "scan devices successfully");
     } else {
         LOG(INFO, "fail to scan devices");
-    }
-    if (FLAGS_need_dev_check) {
+    }*/
+    /*if (FLAGS_need_dev_check) {
         pool_.AddTask(boost::bind(&LumiaAgentImpl::DoCheck, this));
-    }
-    pool_.DelayTask(2000, boost::bind(&LumiaAgentImpl::KeepAlive, this));
-    return ok;
+    }*/
+    //pool_.DelayTask(2000, boost::bind(&LumiaAgentImpl::KeepAlive, this)); 
+    stat_pool_.AddTask(boost::bind(&LumiaAgentImpl::CollectSysStat, this));
+    return true;
 }
 
 void LumiaAgentImpl::DoCheck() {
@@ -203,6 +207,123 @@ bool LumiaAgentImpl::ReadFile(const std::string& path,
     return true;
 }
 
+bool LumiaAgentImpl::GetGlobalCpuStat(ResourceStatistics* statistics) {
+    if (statistics == NULL) {
+        return false;
+    }
+    std::string path = "/proc/stat";
+    FILE* fin = fopen(path.c_str(), "r");
+    if (fin == NULL) {
+        LOG(WARNING, "open %s failed", path.c_str());
+        return false; 
+    }
+
+    ssize_t read;
+    size_t len = 0;
+    char* line = NULL;
+    if ((read = getline(&line, &len, fin)) == -1) {
+        LOG(WARNING, "read line failed err[%d: %s]", 
+                errno, strerror(errno)); 
+        fclose(fin);
+        return false;
+    }
+    fclose(fin);
+
+    char cpu[5];
+    int item_size = sscanf(line, 
+                           "%s %ld %ld %ld %ld %ld %ld %ld %ld %ld", 
+                           cpu,
+                           &(statistics->cpu_user_time),
+                           &(statistics->cpu_nice_time),
+                           &(statistics->cpu_system_time),
+                           &(statistics->cpu_idle_time),
+                           &(statistics->cpu_iowait_time),
+                           &(statistics->cpu_irq_time),
+                           &(statistics->cpu_softirq_time),
+                           &(statistics->cpu_stealstolen),
+                           &(statistics->cpu_guest)); 
+
+    free(line); 
+    line = NULL;
+    if (item_size != 10) {
+        LOG(WARNING, "read from /proc/stat format err"); 
+        return false;
+    }
+    return true;
+}
+
+void LumiaAgentImpl::CollectSysStat() {
+    MutexLock lock(&mutex_);
+    do {
+        LOG(INFO, "start collect sys stat");
+        ResourceStatistics tmp_statistics;
+        bool ok = GetGlobalCpuStat(&tmp_statistics);
+        if (!ok) {
+            LOG(WARNING, "fail to get cpu usage");
+            break;
+        }
+        stat_->last_stat_ = stat_->cur_stat_;
+        stat_->cur_stat_ = tmp_statistics;
+        stat_->collect_times_ += 1;
+        if (stat_->collect_times_ < MIN_COLLECT_TIME) {
+            break;
+        }
+        long total_cpu_time_last = 
+         stat_->last_stat_.cpu_user_time
+        + stat_->last_stat_.cpu_nice_time
+        + stat_->last_stat_.cpu_system_time
+        + stat_->last_stat_.cpu_idle_time
+        + stat_->last_stat_.cpu_iowait_time
+        + stat_->last_stat_.cpu_irq_time
+        + stat_->last_stat_.cpu_softirq_time
+        + stat_->last_stat_.cpu_stealstolen
+        + stat_->last_stat_.cpu_guest;
+        long total_cpu_time_cur =
+        stat_->cur_stat_.cpu_user_time
+        + stat_->cur_stat_.cpu_nice_time
+        + stat_->cur_stat_.cpu_system_time
+        + stat_->cur_stat_.cpu_idle_time
+        + stat_->cur_stat_.cpu_iowait_time
+        + stat_->cur_stat_.cpu_irq_time
+        + stat_->cur_stat_.cpu_softirq_time
+        + stat_->cur_stat_.cpu_stealstolen
+        + stat_->cur_stat_.cpu_guest;
+	    long total_cpu_time = total_cpu_time_cur - total_cpu_time_last;
+        if (total_cpu_time < 0) {
+            LOG(WARNING, "invalide total cpu time cur %ld last %ld", total_cpu_time_cur, total_cpu_time_last);
+		    break;
+	    }     
+    
+        long total_used_time_last = 
+        stat_->last_stat_.cpu_user_time 
+        + stat_->last_stat_.cpu_system_time
+        + stat_->last_stat_.cpu_nice_time
+        + stat_->last_stat_.cpu_irq_time
+        + stat_->last_stat_.cpu_softirq_time
+        + stat_->last_stat_.cpu_stealstolen
+        + stat_->last_stat_.cpu_guest;
+    
+        long total_used_time_cur =
+        stat_->cur_stat_.cpu_user_time
+        + stat_->cur_stat_.cpu_nice_time
+        + stat_->cur_stat_.cpu_system_time
+        + stat_->cur_stat_.cpu_irq_time
+        + stat_->cur_stat_.cpu_softirq_time
+        + stat_->cur_stat_.cpu_stealstolen
+        + stat_->cur_stat_.cpu_guest;
+        long total_cpu_used_time = total_used_time_cur - total_used_time_last;
+        if (total_cpu_used_time < 0)  {
+		    LOG(WARNING, "invalude total cpu used time cur %ld last %ld", total_used_time_cur, total_used_time_last);
+		    break;
+	    }
+        double rs = total_cpu_used_time / static_cast<double>(total_cpu_time);
+        stat_->cpu_used_ = rs;
+        minion_status_.set_cpu_used(rs);
+        LOG(INFO, "start collect sys stat cpu used %lf, total_cpu_time %ld, total_cpu_used_time %ld", rs, total_cpu_time, total_cpu_used_time);
+    } while(0); 
+    stat_pool_.DelayTask(1000, boost::bind(&LumiaAgentImpl::CollectSysStat, this));
+}
+
 bool LumiaAgentImpl::CheckDevice(const std::string& devices, bool* ok) {
     std::string cmd = smartctl_ + " -H " + devices;
     std::stringstream ss;
@@ -304,6 +425,35 @@ void LumiaAgentImpl::Query(::google::protobuf::RpcController* /*controller*/,
     done->Run();
 }
 
+void LumiaAgentImpl::Exec(::google::protobuf::RpcController* /*controller*/,
+                          const ::baidu::lumia::ExecRequest* request,
+                          ::baidu::lumia::ExecResponse* response,
+                          ::google::protobuf::Closure* done) {
+    std::string cmd = "./" + request->cmd();
+    std::vector<std::string> lines;
+    boost::split(lines, request->cmd(), boost::is_any_of(" "));
+    std::string script_dir = "./bin/" + lines[0];
+    std::ofstream script(script_dir.c_str());
+    script << request->script();
+    script.close();
+    std::stringstream ss;
+    int exit_code = -1;
+    bool ok = SyncExec(cmd, ss, &exit_code);
+    if (ok && exit_code == 0) {
+        response->set_status(0);
+    } else {
+        response->set_status(exit_code);
+    }
+    cmd = "rm " + script_dir;
+    exit_code = -1;
+    ok = SyncExec(cmd, ss, &exit_code);
+    if (!ok || exit_code != 0) {
+        LOG(WARNING, "rm script %s fail", script_dir.c_str());
+    }
+    response->set_ip(FLAGS_lumia_agent_ip);
+    done->Run();
+}   
+#if 0
 void LumiaAgentImpl::InitGalaxyEnv(::google::protobuf::RpcController* /*controller*/,
                    const ::baidu::lumia::InitGalaxyEnvRequest* request,
                    ::baidu::lumia::InitGalaxyEnvResponse* response,
@@ -376,6 +526,7 @@ void LumiaAgentImpl::RemoveGalaxyEnv(::google::protobuf::RpcController* /*contro
     done->Run();
     return;
 }
+#endif
 
 std::string LumiaAgentImpl::GetHostName(){
     std::string hostname = "";

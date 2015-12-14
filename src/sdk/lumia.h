@@ -50,17 +50,15 @@ public:
     LumiaSdk();
     virtual ~LumiaSdk();
     static LumiaSdk* ConnectLumia(const std::string& lumia_addr);
-    virtual bool ReportDeadMinion(const std::string& ip, const std::string& reason) = 0;
     virtual bool GetMinion(const std::vector<std::string>& ips,
                            const std::vector<std::string>& hostnames,
                            const std::vector<std::string>& ids,
                            std::vector<MinionDesc>* minions) = 0;
     virtual bool ImportData(const std::string& dict_path,
-                            const std::string& init_scripts_dir,
-                            const std::string& rm_scripts_dir) = 0;
+                            const std::string& scripts_dir) = 0;
     virtual bool ExportData(const std::string& dict_path) = 0;
     virtual bool ExecMinion(const std::string& dict_path,
-                            const std::string& scripts_dir) = 0;
+                            const std::string& cmd) = 0;
 };
 
 }

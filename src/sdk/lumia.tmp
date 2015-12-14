@@ -3,18 +3,11 @@
 // found in the LICENSE file.
 #include "sdk/lumia.h"
 
-#include <gflags/gflags.h>
 #include <fstream>
 #include <sstream>
 #include <dirent.h>
 #include "rpc/rpc_client.h"
 #include "proto/lumia.pb.h"
-#include "meta_query.h"
-
-DECLARE_int32(galaxy_cpu_use_percent);
-DECLARE_int32(galaxy_mem_use_percent);
-DECLARE_int64(galaxy_disk_usage);
-DECLARE_int64(galaxy_bandwidth_usage);
 
 namespace baidu {
 namespace lumia {
@@ -27,19 +20,36 @@ public:
         rpc_client_ = new ::baidu::galaxy::RpcClient();
         rpc_client_->GetStub(lumia_addr, &lumia_);
     }
+    bool ReportDeadMinion(const std::string& ip,
+                          const std::string& reason);
     bool GetMinion(const std::vector<std::string>& ips,
                    const std::vector<std::string>& hostnames,
                    const std::vector<std::string>& ids,
                    std::vector<MinionDesc>* minions);
     bool ImportData(const std::string& dict_path,
                     const std::string& scripts_dir);
-    bool ExportData(const std::string& dict_path);
-    bool ExecMinion(const std::string& dict_path,
-                    const std::string& cmd);
+    bool DelMinion(const std::string& dict_path);
+    bool InitGalaxy(const std::string& dict_path);
+    bool RemoveGalaxy(const std::string& dict_path);
 private:
     ::baidu::galaxy::RpcClient* rpc_client_;
     LumiaCtrl_Stub* lumia_;
 };
+
+bool LumiaSdkImpl::ReportDeadMinion(const std::string& ip,
+                                    const std::string& reason) {
+    ReportDeadMinionRequest request;
+    request.set_ip(ip);
+    request.set_reason(reason);
+    ReportDeadMinionResponse response;
+    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::ReportDeadMinion,
+                                       &request, &response, 5, 1);
+    if (!ok || response.status() != kLumiaOk) {
+        return false;
+    }
+    return true;
+}
+
 bool LumiaSdkImpl::GetMinion(const std::vector<std::string>& ips,
                              const std::vector<std::string>& hostnames,
                              const std::vector<std::string>& ids,
@@ -107,94 +117,40 @@ bool LumiaSdkImpl::GetMinion(const std::vector<std::string>& ips,
     return true;
 }
 
-LumiaSdk::LumiaSdk(){}
-LumiaSdk::~LumiaSdk(){}
-
-LumiaSdk* LumiaSdk::ConnectLumia(const std::string& lumia_addr){
-    return new LumiaSdkImpl(lumia_addr);
+bool LumiaSdkImpl::DelMinion(const std::string& dict_path) {
+    DelMinionRequest request;
+    if (!dict_path.empty()) {
+        std::ifstream minion_list;
+        minion_list.open(dict_path.c_str());
+        char buffer[1024];
+        std::string minion_name;
+        while (getline(minion_list, minion_name)) {
+            request.add_hostnames(minion_name);
+        }
+    }
+    DelMinionResponse response;
+    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::DelMinion, &request, &response, 5, 1);
+    if (!ok || response.status() != kLumiaOk) {
+        return false;
+    }
+    return true;
 }
 
 bool LumiaSdkImpl::ImportData(const std::string& dict_path,
                               const std::string& scripts_dir) {
-    if (dict_path.empty()) {
-        return false;
-    }
-    std::ifstream hostnames_is;
-    hostnames_is.open(dict_path.c_str());
-    std::string minion_name;
-    metaquery::EntityRequest req;
-    req.type =  metaquery::EntityType::HOST;
-    std::vector<std::string> hosts;
-    while (getline(hostnames_is, minion_name)) {
-        hosts.push_back(minion_name);
-    }
-    req.__set_insts(hosts);
-    
-    std::vector<std::string> fields;
-    fields.push_back("cpuFrequency");
-    fields.push_back("cpuLogicalCores");
-    fields.push_back("diskTotal");
-    fields.push_back("id");
-    fields.push_back("memTotal");
-    fields.push_back("netIdc");
-    fields.push_back("netIpIn1");
-    req.__set_fields(fields);
-    req.__set_limit(5);
-    req.__set_offset(1);
-
-    uint32_t timeout = 300000;
-    metaquery::EntityResponse res;
-    int ret = get_entity(req, timeout, &res);
-    if (!ret == metaquery::ReturnCode::SUCCESS) {
-        LOG(WARNING, "metaquery return fail code : %d", ret);
-        return ret;
-    }
-    std::vector<metaquery::InstType> inst = res.data;
-    ImportDataRequest init_req;
-    Minions* minions = init_req.mutable_minions();
-    for (size_t i = 0; i < inst.size(); i++) {
-        Minion* minion = minions->add_minions();
-        minion->set_hostname(inst[i].name);
-        std::map<std::string, std::string> values = inst[i].values;
-        for (std::map<std::string, std::string>::iterator value_it = values.begin();
-                value_it != values.end(); value_it++) {
-            if (value_it->first == "cpuFrequency") {
-                minion->mutable_cpu()->set_clock(value_it->second);
-            } else if (value_it->first == "cpuLogicalCores") {
-                std::stringstream cores;
-                int64_t count;
-                cores << value_it->second;
-                cores >> count;
-                minion->mutable_cpu()->set_count(count*FLAGS_galaxy_cpu_use_percent/100);
-            } else if (value_it->first == "diskTotal") {
-                int size = 0;
-                if (FLAGS_galaxy_disk_usage == 0) {
-                    std::stringstream disksize;
-                    disksize << value_it->second;
-                    disksize >> size;
-                } else {
-                    size = FLAGS_galaxy_disk_usage;
-                }
-                minion->mutable_disk()->set_size(size);
-            } else if (value_it->first == "id") {
-                minion->set_id(value_it->second);
-            } else if (value_it->first == "memTotal") {
-                std::stringstream mem_size;
-                int64_t size;
-                mem_size << value_it->second;
-                mem_size >> size;
-                minion->mutable_mem()->set_size(size*FLAGS_galaxy_mem_use_percent/100);
-            } else if (value_it->first == "netIdc") {
-                minion->set_rock_ip(value_it->second);
-            } else if (value_it->first == "netIpIn1") {
-                minion->set_ip(value_it->second);
-            }
-            if (FLAGS_galaxy_bandwidth_usage != 0) {
-                minion->set_bandwidth(FLAGS_galaxy_bandwidth_usage);
-            }
+    ImportDataRequest request;
+    if (!dict_path.empty()) {
+        std::ifstream ip_minions_is;
+        ip_minions_is.open(dict_path.c_str(), std::ifstream::binary);
+        char buffer[1024];
+        std::stringstream ss;
+        while(ip_minions_is.good()) {
+            ip_minions_is.read(buffer, 1024);
+            int32_t read_count = ip_minions_is.gcount();
+            ss.write(buffer, read_count);
         }
+        request.mutable_minions()->ParseFromString(ss.str());
     }
-    
     if (!scripts_dir.empty()) {
         DIR *dir = opendir(scripts_dir.c_str());
         if (dir == NULL) {
@@ -217,63 +173,79 @@ bool LumiaSdkImpl::ImportData(const std::string& dict_path,
                 int32_t count = script.gcount();
                 ss.write(buffer, count);
             }
-            SystemScript* sc = init_req.mutable_scripts()->Add();
+            SystemScript* sc = request.mutable_scripts()->Add();
             sc->set_name(filename);
             sc->set_content(ss.str());
-        }
+        } 
     }
-
-    ImportDataResponse init_resp;
+   
+    ImportDataResponse response;
     bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::ImportData,
-                                       &init_req, &init_resp, 100, 1);
-    if (!ok || init_resp.status() != kLumiaOk) {
+                                       &request, &response, 100, 1);
+    if (!ok || response.status() != kLumiaOk) {
         return false;
     }
     return true;
 }
 
-bool LumiaSdkImpl::ExportData(const std::string& dict_path) {
-    ExportDataRequest request;
+LumiaSdk::LumiaSdk(){}
+LumiaSdk::~LumiaSdk(){}
+
+LumiaSdk* LumiaSdk::ConnectLumia(const std::string& lumia_addr){
+    return new LumiaSdkImpl(lumia_addr);
+}
+
+bool LumiaSdkImpl::InitGalaxy(const std::string& dict_path) {
+    InitGalaxyRequest request;
+    if (dict_path.empty()) {
+        return false;
+    }
+    std::ifstream hostnames_is;
+    hostnames_is.open(dict_path.c_str());
+    char buffer[1024];
+    std::string minion_name;
+    while (getline(hostnames_is, minion_name)) {
+        request.add_hostnames(minion_name);
+    }
+
+    std::ifstream ip_minions_is;
+    ip_minions_is.open(dict_path.c_str(), std::ifstream::binary);
+    char buffer[1024];
+    std::stringstream ss;
+    while(ip_minions_is.good()) {
+        ip_minions_is.read(buffer, 1024);
+        int32_t read_count = ip_minions_is.gcount();
+        ss.write(buffer, read_count);
+    }
+    request.mutable_minions()->ParseFromString(ss.str());
+    InitGalaxyResponse response;
+    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::InitGalaxy,
+                                       &request, &response, 100, 1);
+    if (!ok || response.status() != kLumiaOk) {
+        return false;
+    }
+    return true;
+}
+
+bool LumiaSdkImpl::RemoveGalaxy(const std::string& dict_path) {
+    RemoveGalaxyRequest request;
     if (dict_path.empty()) {
         return false;
     }
     std::ifstream ip_minions_is;
     ip_minions_is.open(dict_path.c_str());
+    char buffer[1024];
     std::string minion_name;
     while (getline(ip_minions_is, minion_name)) {
         request.add_hostnames(minion_name);
     }
-    ExportDataResponse response;
-    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::ExportData,
+    RemoveGalaxyResponse response;
+    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::RemoveGalaxy,
                                        &request, &response, 100, 1);
     if (!ok || response.status() != kLumiaOk) {
         return false;
     }
     return true;
 }
-
-bool LumiaSdkImpl::ExecMinion(const std::string& dict_path,
-                              const std::string& cmd) {
-    ExecMinionRequest request;
-    if (dict_path.empty() || cmd.empty()) {
-        return false;
-    }
-    std::ifstream minions_is;
-    minions_is.open(dict_path.c_str());
-    std::string host;
-    while (getline(minions_is, host)) {
-        request.add_minions(host);
-    }
-    request.set_cmd(cmd);
-
-    ExecMinionResponse response;
-    bool ok = rpc_client_->SendRequest(lumia_, &LumiaCtrl_Stub::ExecMinion,
-                                       &request, &response, 100, 1);
-    if (!ok || response.status() != kLumiaOk) {
-        return false;
-    }
-    return true;
-}
-
 }
 }

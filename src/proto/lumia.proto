@@ -21,6 +21,7 @@ enum MinionState {
     kMinionJoining = 5;
     kMinionError = 6;
     kMinionDel = 7;
+    kMinionBusy = 8;
 }
 
 message Cpu {
@@ -103,8 +104,8 @@ message ExportDataResponse {
 }
 
 message ExecMinionRequest {
-    optional Minions minions = 1;
-    optional string script_name = 2;
+    repeated string minions = 1;
+    optional string cmd = 2;
 }
 
 message ExecMinionResponse {
