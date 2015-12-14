@@ -107,6 +107,7 @@ private:
 
     void CollectSysStat();
     bool GetGlobalCpuStat(ResourceStatistics* statistics);
+    bool GetGlobalMemStat();
     std::string GetHostName();
 private:
     baidu::common::Mutex mutex_;

@@ -6,6 +6,7 @@
 
 #include <sys/utsname.h>
 #include "proto/lumia.pb.h"
+#include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/bind.hpp>
 #include <stdio.h>
@@ -207,6 +208,57 @@ bool LumiaAgentImpl::ReadFile(const std::string& path,
     return true;
 }
 
+bool LumiaAgentImpl::GetGlobalMemStat(){
+    mutex_.AssertHeld();
+    FILE* fp = fopen("/proc/meminfo", "rb");
+    if (fp == NULL) {
+        return false;
+    }
+    std::string content;
+ 	char buf[1024];
+ 	int len = 0;
+    while ((len = fread(buf, 1, sizeof(buf), fp)) > 0) {
+        content.append(buf, len);
+    }
+    std::vector<std::string> lines;
+    boost::split(lines, content, boost::is_any_of("\n"));
+    int64_t total_mem = 0;
+    int64_t free_mem = 0;
+    int64_t buffer_mem = 0;
+    int64_t cache_mem = 0;
+    for (size_t i = 0; i < lines.size(); i++) {
+        std::string line = lines[i];
+        std::vector<std::string> parts;
+        if (line.find("MemTotal:") == 0) {
+            boost::split(parts, line, boost::is_any_of(" "));
+            if (parts.size() < 2) {
+                return false;
+            }
+            total_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
+        }else if (line.find("MemFree:") == 0) {
+            boost::split(parts, line, boost::is_any_of(" "));
+            if (parts.size() < 2) {
+                return false;
+            }
+            free_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
+        }else if (line.find("Buffers:") == 0) {
+            boost::split(parts, line, boost::is_any_of(" "));
+            if (parts.size() < 2) {
+                return false;
+            }
+            buffer_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
+        }else if (line.find("Cached:") == 0) {
+            boost::split(parts, line, boost::is_any_of(" "));
+            if (parts.size() < 2) {
+                return false;
+            }
+            cache_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
+        }
+    }
+    stat_->mem_used_ = (total_mem - free_mem - buffer_mem - cache_mem) / boost::lexical_cast<double>(total_mem);
+    return true;
+}
+
 bool LumiaAgentImpl::GetGlobalCpuStat(ResourceStatistics* statistics) {
     if (statistics == NULL) {
         return false;
@@ -260,6 +312,11 @@ void LumiaAgentImpl::CollectSysStat() {
         bool ok = GetGlobalCpuStat(&tmp_statistics);
         if (!ok) {
             LOG(WARNING, "fail to get cpu usage");
+            break;
+        }
+        ok = GetGlobalMemStat();
+        if (!ok) {
+            LOG(WARNING, "fail to get mem usage");
             break;
         }
         stat_->last_stat_ = stat_->cur_stat_;
@@ -319,7 +376,7 @@ void LumiaAgentImpl::CollectSysStat() {
         double rs = total_cpu_used_time / static_cast<double>(total_cpu_time);
         stat_->cpu_used_ = rs;
         minion_status_.set_cpu_used(rs);
-        LOG(INFO, "start collect sys stat cpu used %lf, total_cpu_time %ld, total_cpu_used_time %ld", rs, total_cpu_time, total_cpu_used_time);
+        LOG(INFO, "start collect sys stat mem used %lf, cpu used %lf, total_cpu_time %ld, total_cpu_used_time %ld",stat_->mem_used_, rs, total_cpu_time, total_cpu_used_time);
     } while(0); 
     stat_pool_.DelayTask(1000, boost::bind(&LumiaAgentImpl::CollectSysStat, this));
 }
@@ -422,6 +479,8 @@ void LumiaAgentImpl::Query(::google::protobuf::RpcController* /*controller*/,
     response->mutable_minion_status()->CopyFrom(minion_status_);
     response->set_ip(FLAGS_lumia_agent_ip);
     response->set_status(0);
+    response->mutable_minion_status()->set_cpu_used(stat_->cpu_used_);
+    response->mutable_minion_status()->set_mem_used(stat_->mem_used_);
     done->Run();
 }
 
