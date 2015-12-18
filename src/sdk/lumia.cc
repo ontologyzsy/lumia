@@ -167,7 +167,7 @@ bool LumiaSdkImpl::ImportData(const std::string& dict_path,
                 cores >> count;
                 minion->mutable_cpu()->set_count(count*FLAGS_galaxy_cpu_use_percent/100);
             } else if (value_it->first == "diskTotal") {
-                int size = 0;
+                int64_t size = 0;
                 if (FLAGS_galaxy_disk_usage == 0) {
                     std::stringstream disksize;
                     disksize << value_it->second;

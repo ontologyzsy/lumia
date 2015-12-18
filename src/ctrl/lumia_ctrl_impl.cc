@@ -37,7 +37,7 @@ DECLARE_string(master_path);
 DECLARE_string(galaxy_ftp_path);
 DECLARE_int32(galaxy_mem_max_percent);
 DECLARE_int32(galaxy_cpu_max_percent);
-
+DECLARE_string(lumia_agent_port);
 
 namespace baidu {
 namespace lumia {
@@ -209,7 +209,7 @@ void LumiaCtrlImpl::ScheduleNextQueryGalaxy() {
 void LumiaCtrlImpl::LaunchQueryGalaxy() {
     ScheduleNextQueryGalaxy();
     ::galaxy::ins::sdk::SDKError err;
-    std::string master_path_key = FLAGS_nexus_root_path + "-" + FLAGS_data_center + FLAGS_master_path;
+    std::string master_path_key = FLAGS_nexus_root_path + FLAGS_master_path;
     std::string master_addr;
     bool ok = nexus_->Get(master_path_key, &master_addr, &err);
     if (!ok) {
@@ -245,6 +245,7 @@ void LumiaCtrlImpl::LaunchQueryGalaxy() {
 }
 
 void LumiaCtrlImpl::HandleInitGalaxy(const std::string& node_addr) {
+    MutexLock lock(&mutex_);
     const minion_set_ip_index_t& ip_index = boost::multi_index::get<ip_tag>(minion_set_);
     minion_set_ip_index_t::const_iterator it = ip_index.find(node_addr);
     if (it == ip_index.end()) {
@@ -254,7 +255,9 @@ void LumiaCtrlImpl::HandleInitGalaxy(const std::string& node_addr) {
     ExecRequest* request = new ExecRequest();
     ExecResponse* response = new ExecResponse();
     std::string cmd = "deploy_galaxy_agent.sh";
-    cmd = cmd +  " -data_center" + " " + FLAGS_data_center;
+    if (!FLAGS_data_center.empty()) {
+        cmd = cmd +  " -data_center" + " " + FLAGS_data_center;
+    }
     cmd = cmd + " -ftp_path" + " " + FLAGS_galaxy_ftp_path;
     if (it->minion_->has_disk() && it->minion_->disk().has_size()) {
         std::stringstream ss;
@@ -274,7 +277,8 @@ void LumiaCtrlImpl::HandleInitGalaxy(const std::string& node_addr) {
     request->set_script(sc_it->second);
     request->set_cmd(cmd);
     LumiaAgent_Stub* agent = NULL;
-    rpc_client_->GetStub(node_addr, &agent);
+    std::string minion_addr = node_addr + ":" + FLAGS_lumia_agent_port;
+    rpc_client_->GetStub(minion_addr, &agent);
     boost::function<void (const ExecRequest*, ExecResponse*, bool, int)> callback;
     callback = boost::bind(&LumiaCtrlImpl::ExecCallback, this, _1, _2, _3, _4, node_addr, "init");
     rpc_client_->AsyncRequest(agent, &LumiaAgent_Stub::Exec, request, response, callback, 5 ,0);
@@ -324,12 +328,12 @@ void LumiaCtrlImpl::QueryCallBack(const QueryAgentRequest* request,
     if (response->minion_status().cpu_used() * 100 > FLAGS_galaxy_cpu_max_percent
         || response->minion_status().mem_used() * 100 > FLAGS_galaxy_mem_max_percent) {
         it->minion_->set_state(kMinionBusy);
-        HandleRemoveGalaxy(node_addr);
+        workers_.AddTask(boost::bind(&LumiaCtrlImpl::HandleRemoveGalaxy, this, node_addr));
     }
 }
 
 void LumiaCtrlImpl::HandleRemoveGalaxy(const std::string& node_addr) {
-    mutex_.AssertHeld();
+    MutexLock lock(&mutex_);
     const minion_set_ip_index_t& ip_index = boost::multi_index::get<ip_tag>(minion_set_);
     minion_set_ip_index_t::const_iterator it = ip_index.find(node_addr);
     if (it == ip_index.end()) {
@@ -347,7 +351,8 @@ void LumiaCtrlImpl::HandleRemoveGalaxy(const std::string& node_addr) {
     request->set_script(sc_it->second);
     request->set_cmd(cmd);
     LumiaAgent_Stub* agent = NULL;
-    rpc_client_->GetStub(node_addr, &agent);
+    std::string minion_addr = node_addr + ":" + FLAGS_lumia_agent_port;
+    rpc_client_->GetStub(minion_addr, &agent);
     boost::function<void (const ExecRequest*, ExecResponse*,
                           bool, int)> callback;
     callback = boost::bind(&LumiaCtrlImpl::ExecCallback, this, _1, _2, _3, _4, node_addr, "rm");
@@ -357,7 +362,7 @@ void LumiaCtrlImpl::HandleRemoveGalaxy(const std::string& node_addr) {
 }
 
 void LumiaCtrlImpl::HandleExecGalaxy(const std::string& node_addr, const std::string& cmd, const std::string& script) {
-    mutex_.AssertHeld();
+    MutexLock lock(&mutex_);
     const minion_set_ip_index_t& ip_index = boost::multi_index::get<ip_tag>(minion_set_);
     minion_set_ip_index_t::const_iterator it = ip_index.find(node_addr);
     if (it == ip_index.end()) {
@@ -374,7 +379,8 @@ void LumiaCtrlImpl::HandleExecGalaxy(const std::string& node_addr, const std::st
     request->set_script(sc_it->second);
     request->set_cmd(cmd);
     LumiaAgent_Stub* agent = NULL;
-    rpc_client_->GetStub(node_addr, &agent);
+    std::string minion_addr = node_addr + ":" + FLAGS_lumia_agent_port;
+    rpc_client_->GetStub(minion_addr, &agent);
     boost::function<void (const ExecRequest*, ExecResponse*,
                           bool, int)> callback;
     callback = boost::bind(&LumiaCtrlImpl::ExecCallback, this, _1, _2, _3, _4, node_addr, "exec");
@@ -545,10 +551,15 @@ void LumiaCtrlImpl::ImportData(::google::protobuf::RpcController* /*controller*/
             minion_set_.insert(m_index);
             workers_.AddTask(boost::bind(&LumiaCtrlImpl::HandleInitGalaxy, this, m->ip()));     
             LOG(INFO, "insert new minion %s", m->hostname().c_str());
-        }else {
+        } else {
             MinionState state = it->minion_->state();
             it->minion_->CopyFrom(minion);
-            it->minion_->set_state(state);
+            if (state == kMinionDel || state == kMinionError || state == kMinionBusy) {
+                it->minion_->set_state(kMinionAlive);
+                workers_.AddTask(boost::bind(&LumiaCtrlImpl::HandleInitGalaxy, this, it->minion_->ip()));
+            } else {
+                it->minion_->set_state(state);
+            }
             LOG(INFO, "update minion %s", minion.hostname().c_str());
         }
     }
@@ -562,9 +573,9 @@ void LumiaCtrlImpl::ExportData(::google::protobuf::RpcController*,
                                  ::baidu::lumia::ExportDataResponse* response,
                                  ::google::protobuf::Closure* done) {
     MutexLock lock(&mutex_);   
-    std::map<std::string, std::string>::iterator sc_it = scripts_.find("remove_galaxy_hybrid.sh");
+    std::map<std::string, std::string>::iterator sc_it = scripts_.find("remove_galaxy_agent.sh");
     if (sc_it == scripts_.end()) {
-        LOG(WARNING, "remove_galaxy_hybrid.sh is not found");
+        LOG(WARNING, "remove_galaxy_agent.sh is not found");
         response->set_status(kLumiaScriptNotFound);
         done->Run();
         return;
@@ -574,7 +585,7 @@ void LumiaCtrlImpl::ExportData(::google::protobuf::RpcController*,
     for (int i = 0; i < request->hostnames_size(); i++) {
         minion_set_hostname_index_t::const_iterator it = index.find(request->hostnames(i));
         if (it == index.end()) {
-            LOG(WARNING, "minion %s is not exist.", it->minion_->hostname().c_str());
+            LOG(WARNING, "minion %s is not exist.", request->hostnames(i).c_str());
         } else {
             it->minion_->set_state(kMinionDel);
         }

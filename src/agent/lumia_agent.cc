@@ -27,10 +27,6 @@ DECLARE_string(lumia_ctrl_port);
 
 DECLARE_string(lumia_agent_ip);
 DECLARE_string(lumia_agent_port);
-DECLARE_string(galaxy_script);
-DECLARE_string(galaxy_script_hybrid);
-DECLARE_string(galaxy_remove_script);
-DECLARE_string(galaxy_ftp_path);
 
 namespace baidu {
 namespace lumia {
@@ -84,7 +80,7 @@ bool LumiaAgentImpl::Init() {
     /*if (FLAGS_need_dev_check) {
         pool_.AddTask(boost::bind(&LumiaAgentImpl::DoCheck, this));
     }*/
-    //pool_.DelayTask(2000, boost::bind(&LumiaAgentImpl::KeepAlive, this)); 
+    pool_.DelayTask(2000, boost::bind(&LumiaAgentImpl::KeepAlive, this)); 
     stat_pool_.AddTask(boost::bind(&LumiaAgentImpl::CollectSysStat, this));
     return true;
 }
@@ -232,30 +228,35 @@ bool LumiaAgentImpl::GetGlobalMemStat(){
         if (line.find("MemTotal:") == 0) {
             boost::split(parts, line, boost::is_any_of(" "));
             if (parts.size() < 2) {
+                fclose(fp);
                 return false;
             }
             total_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
         }else if (line.find("MemFree:") == 0) {
             boost::split(parts, line, boost::is_any_of(" "));
             if (parts.size() < 2) {
+                fclose(fp);
                 return false;
             }
             free_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
         }else if (line.find("Buffers:") == 0) {
             boost::split(parts, line, boost::is_any_of(" "));
             if (parts.size() < 2) {
+                fclose(fp);
                 return false;
             }
             buffer_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
         }else if (line.find("Cached:") == 0) {
             boost::split(parts, line, boost::is_any_of(" "));
             if (parts.size() < 2) {
+                fclose(fp);
                 return false;
             }
             cache_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
         }
     }
     stat_->mem_used_ = (total_mem - free_mem - buffer_mem - cache_mem) / boost::lexical_cast<double>(total_mem);
+    fclose(fp);
     return true;
 }
 
@@ -488,13 +489,27 @@ void LumiaAgentImpl::Exec(::google::protobuf::RpcController* /*controller*/,
                           const ::baidu::lumia::ExecRequest* request,
                           ::baidu::lumia::ExecResponse* response,
                           ::google::protobuf::Closure* done) {
-    std::string cmd = "./" + request->cmd();
+    std::string cmd = request->cmd();
     std::vector<std::string> lines;
     boost::split(lines, request->cmd(), boost::is_any_of(" "));
-    std::string script_dir = "./bin/" + lines[0];
-    std::ofstream script(script_dir.c_str());
+    std::string script_dir = "./" + lines[0];
+    std::ofstream script(script_dir.c_str(), ios::ate);
+    if (!script.is_open()) {
+        LOG(WARNING, "create script %s fail", script_dir.c_str());
+        response->set_status(-1);
+        response->set_ip(FLAGS_lumia_agent_ip);
+        done->Run();
+        return;
+    }
     script << request->script();
     script.close();
+    if (0 != chmod(script_dir.c_str(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH)) {
+        LOG(WARNING, "chmod fail");
+        response->set_status(-2);
+        response->set_ip(FLAGS_lumia_agent_ip);
+        done->Run();
+        return;
+    }
     std::stringstream ss;
     int exit_code = -1;
     bool ok = SyncExec(cmd, ss, &exit_code);
@@ -502,12 +517,7 @@ void LumiaAgentImpl::Exec(::google::protobuf::RpcController* /*controller*/,
         response->set_status(0);
     } else {
         response->set_status(exit_code);
-    }
-    cmd = "rm " + script_dir;
-    exit_code = -1;
-    ok = SyncExec(cmd, ss, &exit_code);
-    if (!ok || exit_code != 0) {
-        LOG(WARNING, "rm script %s fail", script_dir.c_str());
+        LOG(WARNING, "exec %s fail err_code %d", cmd.c_str(), exit_code);
     }
     response->set_ip(FLAGS_lumia_agent_ip);
     done->Run();

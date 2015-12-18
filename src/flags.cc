@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 #include <gflags/gflags.h>
 
-DEFINE_string(nexus_root_path, "/baidu/galaxy/", "root path of nexus");
+DEFINE_string(nexus_root_path, "/baidu/galaxy", "root path of nexus");
 DEFINE_string(master_path, "/master", "master path on nexus");
 DEFINE_string(data_center, "", "cluster data center");
 DEFINE_string(lumia_ctrl_port, "8080", "lumia controller port");
