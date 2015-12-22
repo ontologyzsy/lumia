@@ -325,11 +325,11 @@ void LumiaCtrlImpl::QueryCallBack(const QueryAgentRequest* request,
     it->minion_->mutable_status()->CopyFrom(response->minion_status());
     LOG(INFO, "update minion %s status successfully status %d", response->ip().c_str(),
        response->minion_status().all_is_well());
-    if (response->minion_status().cpu_used() * 100 > FLAGS_galaxy_cpu_max_percent
-        || response->minion_status().mem_used() * 100 > FLAGS_galaxy_mem_max_percent) {
+    if (false == response->minion_status().all_is_well()) {   
         it->minion_->set_state(kMinionBusy);
-        workers_.AddTask(boost::bind(&LumiaCtrlImpl::HandleRemoveGalaxy, this, node_addr));
+        //workers_.AddTask(boost::bind(&LumiaCtrlImpl::HandleRemoveGalaxy, this, node_addr));
     }
+    return;
 }
 
 void LumiaCtrlImpl::HandleRemoveGalaxy(const std::string& node_addr) {

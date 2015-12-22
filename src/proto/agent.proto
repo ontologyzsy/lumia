@@ -19,8 +19,6 @@ message MinionStatus {
     repeated MountStatus mounts = 2;
     optional int64 datetime = 4;
     optional bool all_is_well = 5;
-    optional double cpu_used = 6;
-    optional double mem_used = 7;
 }
 
 message QueryAgentRequest {}

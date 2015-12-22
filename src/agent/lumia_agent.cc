@@ -27,6 +27,21 @@ DECLARE_string(lumia_ctrl_port);
 
 DECLARE_string(lumia_agent_ip);
 DECLARE_string(lumia_agent_port);
+DECLARE_int32(stat_check_period);
+DECLARE_string(remove_galaxy_script);
+DECLARE_double(max_cpu_usage);
+DECLARE_double(max_mem_usage);
+DECLARE_double(max_disk_r_bps);
+DECLARE_double(max_disk_w_bps);
+DECLARE_double(max_disk_r_rate);
+DECLARE_double(max_disk_w_rate);
+DECLARE_double(max_disk_util);
+DECLARE_double(max_net_in_bps);
+DECLARE_double(max_net_out_bps);
+DECLARE_double(max_net_in_pps);
+DECLARE_double(max_net_out_pps);
+DECLARE_double(max_intr_rate);
+DECLARE_double(max_soft_intr_rate);
 
 namespace baidu {
 namespace lumia {
@@ -34,7 +49,7 @@ namespace lumia {
 static const uint64_t MIN_COLLECT_TIME = 4;
 
 LumiaAgentImpl::LumiaAgentImpl():smartctl_(FLAGS_lumia_agent_smartctl_bin_path),
-    pool_(4){
+    pool_(4), lost_ping(4){
     rpc_client_ = new ::baidu::galaxy::RpcClient();
     stat_ = new SysStat();
 }
@@ -129,7 +144,17 @@ void LumiaAgentImpl::KeepAlive() {
                         &response,
                         5, 1);
     if (!ok) {
+        if (++lost_ping > 10) {
+            MinionStatus status;
+            status.set_all_is_well(false);
+            status.set_datetime(baidu::common::timer::get_micros());
+            MutexLock lock(&mutex_);
+            minion_status_.CopyFrom(status);
+            //dorm
+        }
         LOG(WARNING, "ping ctrl %s fails", ctrl_addr.c_str());
+    } else {
+        lost_ping = 0;
     }
     pool_.DelayTask(2000, boost::bind(&LumiaAgentImpl::KeepAlive, this));
 }
@@ -222,6 +247,7 @@ bool LumiaAgentImpl::GetGlobalMemStat(){
     int64_t free_mem = 0;
     int64_t buffer_mem = 0;
     int64_t cache_mem = 0;
+    int64_t tmpfs_mem = 0;
     for (size_t i = 0; i < lines.size(); i++) {
         std::string line = lines[i];
         std::vector<std::string> parts;
@@ -255,15 +281,140 @@ bool LumiaAgentImpl::GetGlobalMemStat(){
             cache_mem = boost::lexical_cast<int64_t>(parts[parts.size() - 2]);
         }
     }
-    stat_->mem_used_ = (total_mem - free_mem - buffer_mem - cache_mem) / boost::lexical_cast<double>(total_mem);
     fclose(fp);
+    
+    std::stringstream ss;
+    int exit_code = -1;
+    bool ok = SyncExec("df -h", ss, &exit_code);
+    if (ok && exit_code == 0) {
+        std::vector<std::string> lines;
+        std::string content = ss.str();
+        boost::split(lines, content, boost::is_any_of("\n"));
+        for (size_t n = 0; n < lines.size(); n++) {
+            std::string line = lines[n];
+            if (line.find("tmpfs")) {
+                std::vector<std::string> parts;
+                boost::split(parts, line, boost::is_any_of(" "));
+                tmpfs_mem = boost::lexical_cast<int64_t>(parts[1]);
+                LOG(WARNING, "detect tmpfs %s %d", parts[1].c_str(), tmpfs_mem);
+                tmpfs_mem = tmpfs_mem * 1024 * 1024 * 1024;
+                break;
+            } else {
+                continue;
+            }
+        }
+    } else {
+        LOG(WARNING, "exec df fail err_code %d", exit_code);
+    }
+    stat_->mem_used_ = (total_mem - free_mem - buffer_mem - cache_mem + tmpfs_mem) / boost::lexical_cast<double>(total_mem);
+ 
     return true;
 }
 
-bool LumiaAgentImpl::GetGlobalCpuStat(ResourceStatistics* statistics) {
-    if (statistics == NULL) {
+bool LumiaAgentImpl::GetGlobalIntrStat() {
+    mutex_.AssertHeld();
+    uint64_t intr_cnt = 0;
+    uint64_t softintr_cnt = 0;
+    std::string path = "/proc/stat";
+    std::ifstream stat(path.c_str());
+    if (!stat.is_open()) {
+        LOG(WARNING, "open proc stat fail.");
         return false;
     }
+    
+    std::vector<std::string> lines;
+    std::string content; 
+    stat >> content;
+    boost::split(lines, content, boost::is_any_of("\n"));
+    for (size_t n = 0; n < lines.size(); n++) {
+        std::string line = lines[n];
+        if (line.find("intr")) {
+            std::vector<std::string> parts;
+            boost::split(parts, line, boost::is_any_of(" "));
+            intr_cnt = boost::lexical_cast<int64_t>(parts[1]);
+        } else if (line.find("softirq")) {
+            std::vector<std::string> parts;
+            boost::split(parts, line, boost::is_any_of(" "));
+            softintr_cnt = boost::lexical_cast<int64_t>(parts[1]);
+        }
+        continue;
+    }
+    stat_->last_stat_ = stat_->cur_stat_;
+    stat_->cur_stat_.interupt_times = intr_cnt;
+    stat_->cur_stat_.soft_interupt_times = softintr_cnt;
+    stat_->intr_rate_ = (stat_->cur_stat_.interupt_times - stat_->last_stat_.interupt_times) / FLAGS_stat_check_period * 1000; 
+    stat_->soft_intr_rate_ = (stat_->cur_stat_.soft_interupt_times - stat_->last_stat_.soft_interupt_times) / FLAGS_stat_check_period * 1000;
+    return true;
+}
+
+bool LumiaAgentImpl::GetGlobalIOStat() {
+    mutex_.AssertHeld();
+    std::string cmd = "iostat -x";
+    std::stringstream ss;
+    std::string content = ss.str();
+    int exit_code = -1;
+    bool ok = SyncExec(cmd, ss, &exit_code);
+    if (ok && exit_code == 0) {
+        std::vector<std::string> lines;
+        boost::split(lines, content, boost::is_any_of("\n"));
+        for (size_t n = 0; n < lines.size(); n++) {
+            std::string line = lines[n];
+            if (line.find("sda")) {
+                std::vector<std::string> parts;
+                boost::split(parts, line, boost::is_any_of(" "));
+                stat_->disk_read_times_ = boost::lexical_cast<double>(parts[3]);
+                stat_->disk_write_times_ = boost::lexical_cast<double>(parts[4]);
+                stat_->disk_read_Bps_ = boost::lexical_cast<double>(parts[5]);
+                stat_->disk_write_Bps_ = boost::lexical_cast<double>(parts[6]);
+                stat_->disk_io_util_ = boost::lexical_cast<double>(parts[lines.size() - 1]);
+                break;
+            } else {
+                continue;
+            }
+        }
+    }else {
+        LOG(WARNING, "exec df fail err_code %d", exit_code);
+    }
+    return true;
+}
+
+bool LumiaAgentImpl::GetGlobalNetStat() {
+    mutex_.AssertHeld();
+    std::string path = "/proc/net/dev";
+    std::ifstream stat(path.c_str());
+    if (!stat.is_open()) {
+        LOG(WARNING, "open dev stat fail.");
+        return false;
+    }
+    std::string content;
+    stat >> content;
+    stat_->last_stat_ = stat_->cur_stat_;
+    std::vector<std::string> lines;
+    boost::split(lines, content, boost::is_any_of("\n"));
+    for (size_t n = 0; n < lines.size(); n++) {
+        std::string line = lines[n];
+        if (line.find("eth0") || line.find("xgbe0")) {
+            std::vector<std::string> parts;
+            boost::split(parts, line, boost::is_any_of(" "));
+            std::vector<std::string> tokens;
+            boost::split(tokens, parts[0], boost::is_any_of(":"));
+            stat_->cur_stat_.net_in_bits = boost::lexical_cast<int64_t>(tokens[1]);
+            stat_->cur_stat_.net_in_packets = boost::lexical_cast<int64_t>(parts[1]);
+            stat_->cur_stat_.net_out_bits = boost::lexical_cast<int64_t>(tokens[8]);
+            stat_->cur_stat_.net_out_packets = boost::lexical_cast<int64_t>(parts[9]);
+        }
+        continue;
+    }
+    stat_->net_in_bps_ = (stat_->cur_stat_.net_in_bits - stat_->last_stat_.net_in_bits) / FLAGS_stat_check_period * 1000;
+    stat_->net_out_bps_ = (stat_->cur_stat_.net_out_bits - stat_->last_stat_.net_out_bits) / FLAGS_stat_check_period * 1000;
+    stat_->net_in_pps_ = (stat_->cur_stat_.net_in_packets - stat_->last_stat_.net_in_packets) / FLAGS_stat_check_period * 1000;
+    stat_->net_out_pps_ = (stat_->cur_stat_.net_out_packets - stat_->last_stat_.net_out_packets) / FLAGS_stat_check_period * 1000;
+    return true;
+}
+
+bool LumiaAgentImpl::GetGlobalCpuStat() {
+    mutex_.AssertHeld();
+    ResourceStatistics statistics;
     std::string path = "/proc/stat";
     FILE* fin = fopen(path.c_str(), "r");
     if (fin == NULL) {
@@ -286,15 +437,15 @@ bool LumiaAgentImpl::GetGlobalCpuStat(ResourceStatistics* statistics) {
     int item_size = sscanf(line, 
                            "%s %ld %ld %ld %ld %ld %ld %ld %ld %ld", 
                            cpu,
-                           &(statistics->cpu_user_time),
-                           &(statistics->cpu_nice_time),
-                           &(statistics->cpu_system_time),
-                           &(statistics->cpu_idle_time),
-                           &(statistics->cpu_iowait_time),
-                           &(statistics->cpu_irq_time),
-                           &(statistics->cpu_softirq_time),
-                           &(statistics->cpu_stealstolen),
-                           &(statistics->cpu_guest)); 
+                           &(statistics.cpu_user_time),
+                           &(statistics.cpu_nice_time),
+                           &(statistics.cpu_system_time),
+                           &(statistics.cpu_idle_time),
+                           &(statistics.cpu_iowait_time),
+                           &(statistics.cpu_irq_time),
+                           &(statistics.cpu_softirq_time),
+                           &(statistics.cpu_stealstolen),
+                           &(statistics.cpu_guest)); 
 
     free(line); 
     line = NULL;
@@ -302,6 +453,58 @@ bool LumiaAgentImpl::GetGlobalCpuStat(ResourceStatistics* statistics) {
         LOG(WARNING, "read from /proc/stat format err"); 
         return false;
     }
+    stat_->last_stat_ = stat_->cur_stat_;
+    stat_->cur_stat_ = statistics;
+    long total_cpu_time_last = 
+    stat_->last_stat_.cpu_user_time
+    + stat_->last_stat_.cpu_nice_time
+    + stat_->last_stat_.cpu_system_time
+    + stat_->last_stat_.cpu_idle_time
+    + stat_->last_stat_.cpu_iowait_time
+    + stat_->last_stat_.cpu_irq_time
+    + stat_->last_stat_.cpu_softirq_time
+    + stat_->last_stat_.cpu_stealstolen
+    + stat_->last_stat_.cpu_guest;
+    long total_cpu_time_cur =
+    stat_->cur_stat_.cpu_user_time
+    + stat_->cur_stat_.cpu_nice_time
+    + stat_->cur_stat_.cpu_system_time
+    + stat_->cur_stat_.cpu_idle_time
+    + stat_->cur_stat_.cpu_iowait_time
+    + stat_->cur_stat_.cpu_irq_time
+    + stat_->cur_stat_.cpu_softirq_time
+    + stat_->cur_stat_.cpu_stealstolen
+    + stat_->cur_stat_.cpu_guest;
+    long total_cpu_time = total_cpu_time_cur - total_cpu_time_last;
+    if (total_cpu_time < 0) {
+        LOG(WARNING, "invalide total cpu time cur %ld last %ld", total_cpu_time_cur, total_cpu_time_last);
+        return false;
+    }     
+
+    long total_used_time_last = 
+    stat_->last_stat_.cpu_user_time 
+    + stat_->last_stat_.cpu_system_time
+    + stat_->last_stat_.cpu_nice_time
+    + stat_->last_stat_.cpu_irq_time
+    + stat_->last_stat_.cpu_softirq_time
+    + stat_->last_stat_.cpu_stealstolen
+    + stat_->last_stat_.cpu_guest;
+
+    long total_used_time_cur =
+    stat_->cur_stat_.cpu_user_time
+    + stat_->cur_stat_.cpu_nice_time
+    + stat_->cur_stat_.cpu_system_time
+    + stat_->cur_stat_.cpu_irq_time
+    + stat_->cur_stat_.cpu_softirq_time
+    + stat_->cur_stat_.cpu_stealstolen
+    + stat_->cur_stat_.cpu_guest;
+    long total_cpu_used_time = total_used_time_cur - total_used_time_last;
+    if (total_cpu_used_time < 0)  {
+        LOG(WARNING, "invalude total cpu used time cur %ld last %ld", total_used_time_cur, total_used_time_last);
+        return false;
+    }
+    double rs = total_cpu_used_time / static_cast<double>(total_cpu_time);
+    stat_->cpu_used_ = rs;
     return true;
 }
 
@@ -310,7 +513,7 @@ void LumiaAgentImpl::CollectSysStat() {
     do {
         LOG(INFO, "start collect sys stat");
         ResourceStatistics tmp_statistics;
-        bool ok = GetGlobalCpuStat(&tmp_statistics);
+        bool ok = GetGlobalCpuStat();
         if (!ok) {
             LOG(WARNING, "fail to get cpu usage");
             break;
@@ -320,68 +523,96 @@ void LumiaAgentImpl::CollectSysStat() {
             LOG(WARNING, "fail to get mem usage");
             break;
         }
-        stat_->last_stat_ = stat_->cur_stat_;
-        stat_->cur_stat_ = tmp_statistics;
-        stat_->collect_times_ += 1;
-        if (stat_->collect_times_ < MIN_COLLECT_TIME) {
+        ok = GetGlobalIntrStat();
+        if (!ok) {
+            LOG(WARNING, "fail to get interupt usage");
             break;
         }
-        long total_cpu_time_last = 
-         stat_->last_stat_.cpu_user_time
-        + stat_->last_stat_.cpu_nice_time
-        + stat_->last_stat_.cpu_system_time
-        + stat_->last_stat_.cpu_idle_time
-        + stat_->last_stat_.cpu_iowait_time
-        + stat_->last_stat_.cpu_irq_time
-        + stat_->last_stat_.cpu_softirq_time
-        + stat_->last_stat_.cpu_stealstolen
-        + stat_->last_stat_.cpu_guest;
-        long total_cpu_time_cur =
-        stat_->cur_stat_.cpu_user_time
-        + stat_->cur_stat_.cpu_nice_time
-        + stat_->cur_stat_.cpu_system_time
-        + stat_->cur_stat_.cpu_idle_time
-        + stat_->cur_stat_.cpu_iowait_time
-        + stat_->cur_stat_.cpu_irq_time
-        + stat_->cur_stat_.cpu_softirq_time
-        + stat_->cur_stat_.cpu_stealstolen
-        + stat_->cur_stat_.cpu_guest;
-	    long total_cpu_time = total_cpu_time_cur - total_cpu_time_last;
-        if (total_cpu_time < 0) {
-            LOG(WARNING, "invalide total cpu time cur %ld last %ld", total_cpu_time_cur, total_cpu_time_last);
-		    break;
-	    }     
-    
-        long total_used_time_last = 
-        stat_->last_stat_.cpu_user_time 
-        + stat_->last_stat_.cpu_system_time
-        + stat_->last_stat_.cpu_nice_time
-        + stat_->last_stat_.cpu_irq_time
-        + stat_->last_stat_.cpu_softirq_time
-        + stat_->last_stat_.cpu_stealstolen
-        + stat_->last_stat_.cpu_guest;
-    
-        long total_used_time_cur =
-        stat_->cur_stat_.cpu_user_time
-        + stat_->cur_stat_.cpu_nice_time
-        + stat_->cur_stat_.cpu_system_time
-        + stat_->cur_stat_.cpu_irq_time
-        + stat_->cur_stat_.cpu_softirq_time
-        + stat_->cur_stat_.cpu_stealstolen
-        + stat_->cur_stat_.cpu_guest;
-        long total_cpu_used_time = total_used_time_cur - total_used_time_last;
-        if (total_cpu_used_time < 0)  {
-		    LOG(WARNING, "invalude total cpu used time cur %ld last %ld", total_used_time_cur, total_used_time_last);
-		    break;
-	    }
-        double rs = total_cpu_used_time / static_cast<double>(total_cpu_time);
-        stat_->cpu_used_ = rs;
-        minion_status_.set_cpu_used(rs);
-        LOG(INFO, "start collect sys stat mem used %lf, cpu used %lf, total_cpu_time %ld, total_cpu_used_time %ld",stat_->mem_used_, rs, total_cpu_time, total_cpu_used_time);
+        ok = GetGlobalIOStat();
+        if (!ok) {
+            LOG(WARNING, "fail to get IO usage");
+            break;
+        }
+        ok = GetGlobalNetStat();
+        if (!ok) {
+            LOG(WARNING, "fail to get Net usage");
+            break;
+        }
+        stat_->collect_times_++;
+        if (stat_->collect_times_ < MIN_COLLECT_TIME) {
+            LOG(WARNING, "collect times not reach %d", MIN_COLLECT_TIME);
+            break;
+        }
+        if (CheckSysHealth()) {
+            break;
+        } else {
+            LOG(WARNING, "sys too busy, prepare to remove galaxy ");
+            std::string cmd = FLAGS_remove_galaxy_script;
+            std::stringstream ss;
+            int exit_code = -1;
+            SyncExec(cmd, ss, &exit_code);
+            LOG(WARNING, "remove galaxy with exit code %d", exit_code);
+        }
     } while(0); 
-    stat_pool_.DelayTask(1000, boost::bind(&LumiaAgentImpl::CollectSysStat, this));
+    stat_pool_.DelayTask(FLAGS_stat_check_period, boost::bind(&LumiaAgentImpl::CollectSysStat, this));
+    return;
 }
 
+bool LumiaAgentImpl::CheckSysHealth() {
+    if (fabs(FLAGS_max_cpu_usage) <= 1e-6 && stat_->cpu_used_ > FLAGS_max_cpu_usage) {
+        LOG(WARNING, "cpu uage %f reach threshold %f", stat_->cpu_used_, FLAGS_max_cpu_usage);
+        return false;
+    }
+    if (fabs(FLAGS_max_mem_usage) <= 1e-6 && stat_->mem_used_ > FLAGS_max_mem_usage) {
+        LOG(WARNING, "mem usage %f reach threshold %f", stat_->mem_used_, FLAGS_max_mem_usage);
+        return false;
+    }
+    if (fabs(FLAGS_max_disk_r_bps) <= 1e-6 && stat_->disk_read_Bps_ > FLAGS_max_disk_r_bps) {
+        LOG(WARNING, "disk read Bps %f reach threshold %f", stat_->disk_read_Bps_, FLAGS_max_disk_r_bps);
+        return false;
+    }
+    if (fabs(FLAGS_max_disk_w_bps) <= 1e-6 && stat_->disk_write_Bps_ > FLAGS_max_disk_w_bps) {
+        LOG(WARNING, "disk write Bps %f reach threshold %f", stat_->disk_write_Bps_, FLAGS_max_disk_w_bps);
+        return false;
+    }
+    if (fabs(FLAGS_max_disk_r_rate) <= 1e-6 && stat_->disk_read_times_ > FLAGS_max_disk_r_rate) {
+        LOG(WARNING, "disk write rate %f reach threshold %f", stat_->disk_read_times_, FLAGS_max_disk_r_rate);
+        return false;
+    }
+    if (fabs(FLAGS_max_disk_w_rate) <= 1e-6 && stat_->disk_write_times_ > FLAGS_max_disk_w_rate) {
+        LOG(WARNING, "disk write rate %f reach threshold %f", stat_->disk_write_times_, FLAGS_max_disk_w_rate);
+        return false;
+    }
+    if (fabs(FLAGS_max_disk_util) <= 1e-6 && stat_->disk_io_util_ > FLAGS_max_disk_util) {
+        LOG(WARNING, "disk io util %f reach threshold %f", stat_->disk_io_util_, FLAGS_max_disk_util);
+        return false;
+    }
+    if (fabs(FLAGS_max_net_in_bps) <= 1e-6 != 0 && stat_->net_in_bps_ > FLAGS_max_net_in_bps) {
+        LOG(WARNING, "net in bps %f reach threshold %f", stat_->net_in_bps_, FLAGS_max_net_in_bps);
+        return false;
+    }
+    if (fabs(FLAGS_max_net_out_bps) <= 1e-6 && stat_->net_out_bps_ > FLAGS_max_net_out_bps) {
+        LOG(WARNING, "net out bps %f reach threshold %f", stat_->net_out_bps_, FLAGS_max_net_out_bps);
+        return false;
+    }
+    if (fabs(FLAGS_max_net_in_pps) <= 1e-6 && stat_->net_in_pps_ > FLAGS_max_net_in_pps) {
+        LOG(WARNING, "net in pps %f reach threshold %f", stat_->net_in_bps_, FLAGS_max_net_in_pps);
+        return false;
+    }
+    if (fabs(FLAGS_max_net_out_pps) <= 1e-6 && stat_->net_out_pps_ > FLAGS_max_net_out_pps) {
+        LOG(WARNING, "net out pps %f reach threshold %f", stat_->net_out_pps_, FLAGS_max_net_out_pps);
+        return false;
+    }
+    if (fabs(FLAGS_max_intr_rate) <= 1e-6  && stat_->intr_rate_ > FLAGS_max_intr_rate) {
+        LOG(WARNING, "interupt rate %f reach threshold %f", stat_->intr_rate_, FLAGS_max_intr_rate);
+        return false;
+    }
+    if (fabs(FLAGS_max_soft_intr_rate) <= 1e-6 && stat_->soft_intr_rate_ > FLAGS_max_soft_intr_rate) {
+        LOG(WARNING, "soft interupt rate %f reach threshold %f", stat_->soft_intr_rate_, FLAGS_max_soft_intr_rate);
+        return false;
+    }
+    return true;
+}
 bool LumiaAgentImpl::CheckDevice(const std::string& devices, bool* ok) {
     std::string cmd = smartctl_ + " -H " + devices;
     std::stringstream ss;
@@ -480,8 +711,6 @@ void LumiaAgentImpl::Query(::google::protobuf::RpcController* /*controller*/,
     response->mutable_minion_status()->CopyFrom(minion_status_);
     response->set_ip(FLAGS_lumia_agent_ip);
     response->set_status(0);
-    response->mutable_minion_status()->set_cpu_used(stat_->cpu_used_);
-    response->mutable_minion_status()->set_mem_used(stat_->mem_used_);
     done->Run();
 }
 
@@ -493,7 +722,7 @@ void LumiaAgentImpl::Exec(::google::protobuf::RpcController* /*controller*/,
     std::vector<std::string> lines;
     boost::split(lines, request->cmd(), boost::is_any_of(" "));
     std::string script_dir = "./" + lines[0];
-    std::ofstream script(script_dir.c_str(), ios::ate);
+    std::ofstream script(script_dir.c_str(), std::ios::ate);
     if (!script.is_open()) {
         LOG(WARNING, "create script %s fail", script_dir.c_str());
         response->set_status(-1);

@@ -32,8 +32,21 @@ struct ResourceStatistics {
     long cpu_guest;
 
     long cpu_cores;
-
+    
+    //mem
     long memory_rss_in_bytes;
+    long tmpfs_in_bytes;
+
+    //interupt
+    long interupt_times;
+    long soft_interupt_times;
+
+    //net
+    long net_in_bits;
+    long net_out_bits;
+    long net_in_packets;
+    long net_out_packets;
+    
     ResourceStatistics() :
         cpu_user_time(0),
         cpu_nice_time(0),
@@ -45,8 +58,14 @@ struct ResourceStatistics {
         cpu_stealstolen(0),
         cpu_guest(0),
         cpu_cores(0),
-        memory_rss_in_bytes(0) {
-    }
+        memory_rss_in_bytes(0),
+        tmpfs_in_bytes(0),
+        interupt_times(0),
+        soft_interupt_times(0),
+        net_in_bits(0),
+        net_out_bits(0),
+        net_in_packets(0),
+        net_out_packets(0) {}
 };
 
 struct SysStat {
@@ -54,11 +73,34 @@ struct SysStat {
     ResourceStatistics cur_stat_;
     double cpu_used_;
     double mem_used_;
+    double disk_read_Bps_;
+    double disk_write_Bps_;
+    double disk_read_times_;
+    double disk_write_times_;
+    double disk_io_util_;
+    double net_in_bps_;
+    double net_out_bps_;
+    double net_in_pps_;
+    double net_out_pps_;
+    double intr_rate_;
+    double soft_intr_rate_;
     uint64_t collect_times_;
     SysStat():last_stat_(),
               cur_stat_(),
               cpu_used_(0.0),
-              mem_used_(0.0){}
+              mem_used_(0.0),
+              disk_read_Bps_(0.0),
+              disk_write_Bps_(0.0),
+              disk_read_times_(0.0),
+              disk_write_times_(0.0),
+              disk_io_util_(0.0),
+              net_in_bps_(0.0),
+              net_out_bps_(0.0),
+              net_in_pps_(0.0),
+              net_out_pps_(0.0),
+              intr_rate_(0.0),
+              soft_intr_rate_(0.0),
+              collect_times_(0) {}
     ~SysStat(){
     }
 };
@@ -106,8 +148,12 @@ private:
     void KeepAlive();
 
     void CollectSysStat();
-    bool GetGlobalCpuStat(ResourceStatistics* statistics);
+    bool GetGlobalCpuStat();
     bool GetGlobalMemStat();
+    bool GetGlobalIntrStat();
+    bool GetGlobalNetStat();
+    bool GetGlobalIOStat();
+    bool CheckSysHealth();
     std::string GetHostName();
 private:
     baidu::common::Mutex mutex_;
@@ -119,6 +165,7 @@ private:
     std::string ctrl_addr_;
     ::baidu::galaxy::RpcClient* rpc_client_;
     SysStat* stat_;
+    uint32_t lost_ping; 
 };
 
 }
